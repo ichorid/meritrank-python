@@ -13,11 +13,29 @@ license = "GPLv2"
 [tool.poetry.dependencies]
 python = "^3.10"
 pony = "^0.7.16"
+networkx = "^2.8.8"
+numpy = "^1.23.5"
+scipy = "^1.9.3"
 
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"
+coverage = {extras = ["toml"], version = "^6.5.0"}
+pytest-cov = "^4.0.0"
+pytest-mock = "^3.10.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.run]
+branch = true
+source = ["meritrank_python"]
+
+[tool.coverage.report]
+show_missing = true
+#fail_under = 100
+
