@@ -1,5 +1,8 @@
+import random
+
 import networkx as nx
 import pytest
+from _pytest.python_api import approx
 
 from meritrank_python.rank import RandomWalk, PosWalk, WalksStorage, IncrementalPageRank
 
@@ -13,12 +16,24 @@ def simple_graph():
 
 
 def test_pagerank(simple_graph):
-    rank = nx.pagerank(simple_graph, personalization={0: 1})
+    random.seed(1)
+    # rank = nx.pagerank(simple_graph, personalization={0: 1})
+    # print(rank)
     ipr = IncrementalPageRank(simple_graph)
     ipr.calculate(0)
-    assert ipr.get_ranks(0) == rank
-    print(rank)
-    print(ipr.get_ranks(0))
+    ranks = ipr.get_ranks(0)
+    assert ranks[0] == approx(0.453, 0.01)
+    assert ranks[1] == approx(0.199, 0.01)
+    assert ranks[2] == approx(0.348, 0.01)
+
+
+def test_pagerank_incremental(simple_graph):
+    ipr = IncrementalPageRank(simple_graph)
+    ipr.calculate(0)
+    ranks1 = ipr.get_ranks(0)
+
+    ipr.add_edge(2, 3)
+    ranks2 = ipr.get_ranks(0)
 
 
 def test_random_walk_uuid():
