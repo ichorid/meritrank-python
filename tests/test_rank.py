@@ -25,7 +25,7 @@ def test_assert_ranking_approx():
     assert_ranking_approx({1: 0.3}, {1: 0.31})
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def rng():
     random.seed(1)
 
@@ -103,13 +103,13 @@ def test_pagerank_incremental_from_empty_graph():
     print(ipr1.get_ranks(0))
 
 
-def test_pagerank_incremental_big(rng):
+def test_pagerank_incremental_big():
     graph = get_scale_free_graph(1000)
-    ipr1 = IncrementalPageRank(graph, max_iter=1000)
+    ipr1 = IncrementalPageRank(graph)
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
 
-    ipr2 = IncrementalPageRank(max_iter=1000)
+    ipr2 = IncrementalPageRank()
     ipr2._graph.add_node(0)
     ipr2.calculate(0)
     for edge in graph.edges():
@@ -118,6 +118,27 @@ def test_pagerank_incremental_big(rng):
 
     assert_ranking_approx(ranks_simple, ranks_incremental)
 
+
+def test_drop_walks():
+    s = WalksStorage()
+
+    # Add and drop walks from a single node
+    walk0 = RandomWalk([0,1,2,3,4])
+    walk00 = RandomWalk([0,2,3,4,1])
+    s.add_walk(walk0)
+    s.add_walk(walk00)
+    s.drop_walks_from_node(0)
+    assert walk0.uuid not in s.get_walks(0)
+    assert walk00.uuid not in s.get_walks(0)
+
+    # Add two walks mentioning the same node, test that dropping
+    # the walk from the first node does not affect the other walks
+    # going through it
+    walk4 = RandomWalk([4,3,2,1,0])
+    s.add_walk(walk0)
+    s.add_walk(walk4)
+    s.drop_walks_from_node(0)
+    assert walk4.uuid in s.get_walks(4)
 
 def test_random_walk_uuid():
     assert RandomWalk().uuid != RandomWalk().uuid

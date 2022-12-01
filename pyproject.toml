@@ -16,6 +16,9 @@ pony = "^0.7.16"
 networkx = "^2.8.8"
 numpy = "^1.23.5"
 scipy = "^1.9.3"
+uvicorn = "^0.20.0"
+fastapi = "^0.88.0"
+classy-fastapi = "^0.2.12"
 
 
 [tool.poetry.group.dev.dependencies]

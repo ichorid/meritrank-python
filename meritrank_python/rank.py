@@ -54,10 +54,21 @@ class WalksStorage:
             # To prevent linear scanning, we store the node's position in the walk
             walks_with_node[walk.uuid] = PosWalk(pos, walk)
 
+    def drop_walks_from_node(self, node: NodeId):
+        if (walks := self._walks.get(node)) is None:
+            return
+        for uid, pos_walk in walks.items():
+            if pos_walk.pos == 0:  # This means the walk starts from the node
+                for affected_node in pos_walk.walk[1:]:  # Not to pull the rug from ourselves
+                    del self._walks[affected_node][uid]
+        walks.clear()
+
     def invalidate_walks_through_node(self, invalidated_node: NodeId) -> \
             List[Tuple[RandomWalk, RandomWalk]]:
+        if (walks := self._walks.get(invalidated_node)) is None:
+            return []
         invalidated_walks = []
-        for uid, pos_walk in self._walks.get(invalidated_node, {}).items():
+        for uid, pos_walk in walks.items():
             pos, walk = pos_walk.pos, pos_walk.walk
             # For every node mentioned in the invalidated subsequence,
             # remove the corresponding entries in the bookkeeping dict
@@ -81,27 +92,34 @@ class WalksStorage:
 
 
 class IncrementalPageRank:
-    def __init__(self, graph=None, max_iter: int = 100):
+    def __init__(self, graph=None):
         self._graph = nx.DiGraph(graph)
         self._walks = WalksStorage()
         self._personal_hits: Dict[NodeId, Counter] = {}
         self.alpha = 0.85
-        self.max_iter = max_iter
 
-    def calculate(self, src: NodeId):
+    def calculate(self, src: NodeId, num_walks: int = 1000):
+        """
+        Calculate the PageRank of the given source node.
+        If there are already walks for the node, drop them and calculate anew.
+        :param src: The source node to calculate the PageRank for.
+        :param num_walks: The number of walks that should be used
+        """
+        self._walks.drop_walks_from_node(src)
+
         if not self._graph.has_node(src):
             raise NodeDoesNotExist
 
         counter = self._personal_hits[src] = Counter()
-        for _ in range(0, self.max_iter):
+        for _ in range(0, num_walks):
             walk = self.perform_walk(src)
             counter.update(walk)
             self._walks.add_walk(walk)
 
-    def get_node_score(self, src: NodeId, dst: NodeId):
+    def get_node_score(self, src: NodeId, dest: NodeId):
         counter = self._personal_hits[src]
         # TODO: optimize by caching the total?
-        return counter[dst] / counter.total()
+        return counter[dest] / counter.total()
 
     def get_ranks(self, src: NodeId):
         counter = self._personal_hits[src]
@@ -119,8 +137,13 @@ class IncrementalPageRank:
             weights = [self._graph[node][nbr]['weight'] for nbr in neighbours]
             walk.append(random.choices(neighbours, weights=weights, k=1)[0])
 
-    def add_edge(self, src: NodeId, dst: NodeId, weight: float = 1.0):
-        self._graph.add_edge(src, dst, weight=weight)
+    def get_edge(self, src: NodeId, dest: NodeId) -> float | None:
+        if not self._graph.has_edge(src, dest):
+            return None
+        return self._graph[src][dest]['weight']
+
+    def add_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
+        self._graph.add_edge(src, dest, weight=weight)
         invalidated_walks = self._walks.invalidate_walks_through_node(src)
         for (walk, invalidated_fragment) in invalidated_walks:
             # Subtract the nodes in the invalidated sequence from the hit counter
@@ -129,8 +152,8 @@ class IncrementalPageRank:
             counter = self._personal_hits[starting_node]
             counter.subtract(invalidated_fragment)
 
-            # Finish the invalidated walk. The stochastic nature of the random walk
-            # allows us to complete the walk by just continuing it until it stops naturally.
+            # Finish the invalidated walk. The stochastic nature of random walks
+            # allows us to complete a walk by just continuing it until it stops naturally.
             new_fragment_start = len(walk)
             self.continue_walk(walk)
             counter.update(walk[new_fragment_start:])
