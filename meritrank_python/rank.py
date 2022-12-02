@@ -36,6 +36,10 @@ class WalksStorage:
     def __init__(self):
         self._walks: Dict[NodeId, Dict[uuid.UUID, PosWalk]] = {}
 
+    def walks_starting_from_node(self, src: NodeId) -> list[RandomWalk]:
+        """ Returns the walks starting from the given node"""
+        return [pos_walk.walk for pos_walk in self._walks.get(src, {}).values() if pos_walk.pos == 0]
+
     def add_walk(self, walk: RandomWalk, start_pos: int = 0):
         for pos, node in enumerate(walk):
             if pos < start_pos:
@@ -55,13 +59,10 @@ class WalksStorage:
             walks_with_node[walk.uuid] = PosWalk(pos, walk)
 
     def drop_walks_from_node(self, node: NodeId):
-        if (walks := self._walks.get(node)) is None:
-            return
-        for uid, pos_walk in walks.items():
-            if pos_walk.pos == 0:  # This means the walk starts from the node
-                for affected_node in pos_walk.walk[1:]:  # Not to pull the rug from ourselves
-                    del self._walks[affected_node][uid]
-        walks.clear()
+        for walk in self.walks_starting_from_node(node):
+            for affected_node in walk:
+                del self._walks[affected_node][walk.uuid]
+        self._walks.get(node, {}).clear()
 
     def invalidate_walks_through_node(self, invalidated_node: NodeId) -> \
             List[Tuple[RandomWalk, RandomWalk]]:
@@ -97,6 +98,9 @@ class IncrementalPageRank:
         self._walks = WalksStorage()
         self._personal_hits: Dict[NodeId, Counter] = {}
         self.alpha = 0.85
+
+    def get_walks_count_for_node(self, src: NodeId):
+        return len(self._walks.walks_starting_from_node(src))
 
     def calculate(self, src: NodeId, num_walks: int = 1000):
         """
@@ -160,6 +164,3 @@ class IncrementalPageRank:
             counter.update(walk[new_fragment_start:])
 
             self._walks.add_walk(walk, start_pos=new_fragment_start)
-
-    def calc_rank(self, node):
-        pass
