@@ -121,10 +121,11 @@ class IncrementalPageRank:
         # TODO: optimize by caching the total?
         return counter[dest] / counter.total()
 
-    def get_ranks(self, src: NodeId):
+    def get_ranks(self, src: NodeId, count=None):
         counter = self._personal_hits[src]
         total = counter.total()
-        return {node: count / total for node, count in counter.items()}
+        sorted_ranks = sorted(counter.items(), key=lambda x: x[1], reverse=True)[:count]
+        return {node: count / total for node, count in sorted_ranks}
 
     def perform_walk(self, start_node: NodeId) -> RandomWalk:
         walk = RandomWalk([start_node])

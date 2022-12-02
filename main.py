@@ -27,6 +27,10 @@ class UserRoutes(Routable):
         for node, num_walks in ego_nodes.items():
             self._rank.calculate(node, num_walks)
 
+    @get("/scores/{src}")
+    async def get_scores(self, src: NodeId, count: int | None = None):
+        return self._rank.get_ranks(src, count=count)
+
     @put("/edge")
     async def put_edge(self, edge: Edge):
         self._rank.add_edge(edge.src, edge.dest, edge.weight)

@@ -52,9 +52,14 @@ def test_pagerank(simple_graph):
     ipr = IncrementalPageRank(simple_graph)
     ipr.calculate(0)
     ranks = ipr.get_ranks(0)
-    assert ranks[0] == approx(0.453, 0.01)
-    assert ranks[1] == approx(0.199, 0.01)
-    assert ranks[2] == approx(0.348, 0.01)
+    assert ranks[0] == approx(0.453, 0.1)
+    assert ranks[1] == approx(0.199, 0.1)
+    assert ranks[2] == approx(0.348, 0.1)
+
+    # Test limiting the results by count
+    ranks = ipr.get_ranks(0, count=1)
+    assert ranks[0] == approx(0.453, 0.1)
+    assert len(ranks) == 1
 
 
 def test_pagerank_incremental(simple_graph):
