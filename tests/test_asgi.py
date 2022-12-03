@@ -1,10 +1,9 @@
 from unittest.mock import Mock
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from meritrank_python.asgi import MeritRankRoutes, create_meritrank_app
+from meritrank_python.asgi import create_meritrank_app
 
 
 @pytest.fixture()
