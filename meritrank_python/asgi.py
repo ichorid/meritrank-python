@@ -11,7 +11,7 @@ class Edge(BaseModel):
     weight: float = 1.0
 
 
-class UserRoutes(Routable):
+class MeritRankRoutes(Routable):
     def __init__(self, rank: IncrementalPageRank) -> None:
         super().__init__()
         self._rank = rank
@@ -48,6 +48,8 @@ class UserRoutes(Routable):
         return self._rank.get_node_edges(node)
 
 
-app = FastAPI()
-user_routes = UserRoutes(IncrementalPageRank())
-app.include_router(user_routes.router)
+def create_meritrank_app():
+    app = FastAPI()
+    user_routes = MeritRankRoutes(IncrementalPageRank())
+    app.include_router(user_routes.router)
+    return app
