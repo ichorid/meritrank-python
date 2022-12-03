@@ -17,6 +17,9 @@ class NodeId(int):
 class NodeDoesNotExist(Exception):
     pass
 
+class EdgeDoesNotExist(Exception):
+    pass
+
 
 class RandomWalk(List[NodeId]):
     def __init__(self, *args, **kwargs):
@@ -146,6 +149,11 @@ class IncrementalPageRank:
         if not self._graph.has_edge(src, dest):
             return None
         return self._graph[src][dest]['weight']
+
+    def get_node_edges(self, node: NodeId) -> list[tuple[NodeId, NodeId, float]] | None:
+        if not self._graph.has_node(node):
+            return None
+        return list(self._graph.edges(node, data='weight'))
 
     def add_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
         self._graph.add_edge(src, dest, weight=weight)

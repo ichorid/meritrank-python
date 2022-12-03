@@ -73,8 +73,11 @@ def test_pagerank_incremental(simple_graph):
     ipr2.add_edge(2, 3)
     ranks_incremental = ipr2.get_ranks(0)
 
-    assert ranks_incremental == ranks_simple
+    assert ranks_incremental == approx(ranks_simple, 0.1)
 
+def test_get_node_edges(simple_graph):
+    ipr1 = IncrementalPageRank(simple_graph)
+    assert ipr1.get_node_edges(0) == [(0, 1, 1), (0, 2, 1)]
 
 def test_pagerank_incremental_basic():
     graph = nx.DiGraph(
@@ -90,7 +93,7 @@ def test_pagerank_incremental_basic():
     ipr2.add_edge(0, 2)
     ranks_incremental = ipr2.get_ranks(0)
 
-    assert ranks_incremental == ranks_simple
+    assert ranks_incremental == approx(ranks_simple, 0.1)
 
 
 def test_calculate_nonexistent_node(simple_graph):

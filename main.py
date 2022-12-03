@@ -43,6 +43,10 @@ class UserRoutes(Routable):
     async def get_node_score(self, src: NodeId, dest: NodeId):
         return self._rank.get_node_score(src, dest)
 
+    @get("/node_edges/{node}")
+    async def get_node_edges(self, node: NodeId):
+        return self._rank.get_node_edges(node)
+
 
 app = FastAPI()
 user_routes = UserRoutes(IncrementalPageRank())
