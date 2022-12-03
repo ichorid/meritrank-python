@@ -4,7 +4,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from meritrank_python.asgi import MeritRankRoutes
+from meritrank_python.asgi import MeritRankRoutes, create_meritrank_app
 
 
 @pytest.fixture()
@@ -14,10 +14,7 @@ def mrank():
 
 @pytest.fixture()
 def client(mrank):
-    app = FastAPI()
-    user_routes = MeritRankRoutes(mrank)
-    app.include_router(user_routes.router)
-    return TestClient(app=app)
+    return TestClient(app=create_meritrank_app(mrank))
 
 
 def test_get_walks_count(mrank, client):

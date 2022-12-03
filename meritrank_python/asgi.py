@@ -48,8 +48,8 @@ class MeritRankRoutes(Routable):
         return self._rank.get_node_edges(node)
 
 
-def create_meritrank_app():
+def create_meritrank_app(rank_instance=None):
     app = FastAPI()
-    user_routes = MeritRankRoutes(IncrementalPageRank())
+    user_routes = MeritRankRoutes(rank_instance or IncrementalPageRank())
     app.include_router(user_routes.router)
     return app
