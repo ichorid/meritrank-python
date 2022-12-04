@@ -7,6 +7,9 @@ __pycache__/
 *.so
 *.idea
 
+# DBM databases (integration tests leftovers)
+*.dbm
+
 
 # Poetry lock file
 poetry.lock

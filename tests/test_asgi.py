@@ -18,6 +18,9 @@ def client(mrank):
             rank_instance=mrank,
             persistent_storage=Mock()))
 
+def test_complete_init_with_default_values():
+    assert TestClient(app=create_meritrank_app()).get("/edge/0/1").status_code == 200
+
 
 def test_get_walks_count(mrank, client):
     mrank.get_walks_count_for_node = lambda *_: 0

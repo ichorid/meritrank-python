@@ -52,7 +52,7 @@ class MeritRankRoutes(Routable):
 def create_meritrank_app(rank_instance=None, persistent_storage=None):
     app = FastAPI()
     user_routes = MeritRankRoutes(
-        rank_instance or IncrementalPageRank(
+        rank_instance or IncrementalPageRank(persistent_storage=
             persistent_storage or GraphPersistentStore()))
     app.include_router(user_routes.router)
     return app
