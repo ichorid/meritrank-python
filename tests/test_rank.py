@@ -1,5 +1,6 @@
 import random
 from operator import itemgetter
+from unittest.mock import Mock
 
 import networkx as nx
 import pytest
@@ -75,9 +76,11 @@ def test_pagerank_incremental(simple_graph):
 
     assert ranks_incremental == approx(ranks_simple, 0.1)
 
+
 def test_get_node_edges(simple_graph):
     ipr1 = IncrementalPageRank(simple_graph)
     assert ipr1.get_node_edges(0) == [(0, 1, 1), (0, 2, 1)]
+
 
 def test_pagerank_incremental_basic():
     graph = nx.DiGraph(
@@ -131,8 +134,8 @@ def test_drop_walks():
     s = WalksStorage()
 
     # Add and drop walks from a single node
-    walk0 = RandomWalk([0,1,2,3,4])
-    walk00 = RandomWalk([0,2,3,4,1])
+    walk0 = RandomWalk([0, 1, 2, 3, 4])
+    walk00 = RandomWalk([0, 2, 3, 4, 1])
     s.add_walk(walk0)
     s.add_walk(walk00)
     s.drop_walks_from_node(0)
@@ -142,11 +145,12 @@ def test_drop_walks():
     # Add two walks mentioning the same node, test that dropping
     # the walk from the first node does not affect the other walks
     # going through it
-    walk4 = RandomWalk([4,3,2,1,0])
+    walk4 = RandomWalk([4, 3, 2, 1, 0])
     s.add_walk(walk0)
     s.add_walk(walk4)
     s.drop_walks_from_node(0)
     assert walk4.uuid in s.get_walks(4)
+
 
 def test_random_walk_uuid():
     assert RandomWalk().uuid != RandomWalk().uuid
@@ -162,3 +166,23 @@ def test_walks_storage():
     s = WalksStorage()
     walk = RandomWalk([100, 200, 300])
     s.add_walk(walk)
+
+
+def test_load_graph_from_persist_store(simple_graph):
+    stor = Mock()
+    stor.get_graph_and_calc_commands = lambda: (simple_graph, {0: 10})
+    ipr1 = IncrementalPageRank(persistent_storage=stor)
+    assert ipr1.get_node_edges(0) == [(0, 1, 1), (0, 2, 1)]
+    assert ipr1.get_node_score(0, 1) == 0.24
+
+
+def test_persist_edge_and_calc_commands():
+    stor = Mock()
+    stor.get_graph_and_calc_commands = lambda: ({}, {})
+    ipr1 = IncrementalPageRank(persistent_storage=stor)
+    ipr1.add_edge(0, 1, weight=1.0)
+    stor.put_edge.assert_called_with(0, 1, 1.0)
+
+    ipr1.calculate(0, 2)
+    stor.put_rank_calc_command.assert_called_with(0, 2)
+

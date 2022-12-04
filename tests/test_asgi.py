@@ -13,7 +13,10 @@ def mrank():
 
 @pytest.fixture()
 def client(mrank):
-    return TestClient(app=create_meritrank_app(mrank))
+    return TestClient(
+        app=create_meritrank_app(
+            rank_instance=mrank,
+            persistent_storage=Mock()))
 
 
 def test_get_walks_count(mrank, client):

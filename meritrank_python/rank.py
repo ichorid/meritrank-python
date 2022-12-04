@@ -17,9 +17,6 @@ class NodeId(int):
 class NodeDoesNotExist(Exception):
     pass
 
-class EdgeDoesNotExist(Exception):
-    pass
-
 
 class RandomWalk(List[NodeId]):
     def __init__(self, *args, **kwargs):
@@ -96,11 +93,21 @@ class WalksStorage:
 
 
 class IncrementalPageRank:
-    def __init__(self, graph=None):
+    def __init__(self, graph=None, persistent_storage=None):
+        self._persistent_storage = persistent_storage
+        # FIXME: graph vs persistent_storage options
+        rank_calc_commands = None
+        if self._persistent_storage is not None:
+            graph, rank_calc_commands = self._persistent_storage.get_graph_and_calc_commands()
+
         self._graph = nx.DiGraph(graph)
         self._walks = WalksStorage()
         self._personal_hits: Dict[NodeId, Counter] = {}
         self.alpha = 0.85
+
+        if rank_calc_commands is not None:
+            for node, num_walks in rank_calc_commands.items():
+                self.calculate(node, num_walks)
 
     def get_walks_count_for_node(self, src: NodeId):
         return len(self._walks.walks_starting_from_node(src))
@@ -112,6 +119,9 @@ class IncrementalPageRank:
         :param src: The source node to calculate the PageRank for.
         :param num_walks: The number of walks that should be used
         """
+
+        if self._persistent_storage is not None:
+            self._persistent_storage.put_rank_calc_command(src, num_walks)
         self._walks.drop_walks_from_node(src)
 
         if not self._graph.has_node(src):
@@ -155,8 +165,13 @@ class IncrementalPageRank:
             return None
         return list(self._graph.edges(node, data='weight'))
 
+    def _persist_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
+        if self._persistent_storage is not None:
+            self._persistent_storage.put_edge(src, dest, weight)
+
     def add_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
         self._graph.add_edge(src, dest, weight=weight)
+        self._persist_edge(src, dest, weight)
         invalidated_walks = self._walks.invalidate_walks_through_node(src)
         for (walk, invalidated_fragment) in invalidated_walks:
             # Subtract the nodes in the invalidated sequence from the hit counter

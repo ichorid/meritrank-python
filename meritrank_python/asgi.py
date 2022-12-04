@@ -2,6 +2,7 @@ from classy_fastapi import Routable, get, put
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from meritrank_python.disk_persistence import GraphPersistentStore
 from meritrank_python.rank import NodeId, IncrementalPageRank
 
 
@@ -48,8 +49,10 @@ class MeritRankRoutes(Routable):
         return self._rank.get_node_edges(node)
 
 
-def create_meritrank_app(rank_instance=None):
+def create_meritrank_app(rank_instance=None, persistent_storage=None):
     app = FastAPI()
-    user_routes = MeritRankRoutes(rank_instance or IncrementalPageRank())
+    user_routes = MeritRankRoutes(
+        rank_instance or IncrementalPageRank(
+            persistent_storage or GraphPersistentStore()))
     app.include_router(user_routes.router)
     return app
