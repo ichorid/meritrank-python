@@ -22,7 +22,29 @@ to persist just the edges and the walk-starting nodes.
 With the default configuration, the persistence layer will persist data 
 into `meritrank_graph.dbm` in the working dir (the repo dir).
 
-## How to use
+## Usage example
+```python
+from meritrank_python.rank import IncrementalPageRank
+
+pr = IncrementalPageRank()
+
+pr.add_edge(0, 1, )
+pr.add_edge(0, 2, weight=0.5)
+pr.add_edge(1, 2, weight=2.0)
+
+# Initalize calculating rank from the standpoint of node "0"
+pr.calculate(0)
+
+# Get the score for node "1" from the standpoint of the node "0" 
+print(pr.get_node_score(0, 1))
+
+# Add another edge: note that the scores are automatically recalculated
+pr.add_edge(2, 1, weight=3.0)
+print(pr.get_node_score(0, 1))
+
+```
+
+## HTTP API usage (ASGI)
 The basic usage is covered in the test suite. 
 To run the FastAPI-based ASGI implementation:
 ```commandline
