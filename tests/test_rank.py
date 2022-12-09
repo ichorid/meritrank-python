@@ -14,7 +14,7 @@ def top_items(d, num_items=3):
     return dict(sorted(d.items(), key=itemgetter(1), reverse=True)[:num_items])
 
 
-def assert_ranking_approx(d1, d2, num_top_items=5, precision=0.1):
+def assert_ranking_approx(d1, d2, num_top_items=5, precision=0.2):
     """
     Compare the first num_items of two ranking dicts with given precision
     """
@@ -53,13 +53,12 @@ def test_pagerank(simple_graph):
     ipr = IncrementalPageRank(simple_graph)
     ipr.calculate(0)
     ranks = ipr.get_ranks(0)
-    assert ranks[0] == approx(0.453, 0.1)
-    assert ranks[1] == approx(0.199, 0.1)
-    assert ranks[2] == approx(0.348, 0.1)
+    assert ranks == approx({1: 0.354, 2: 0.645}, 0.1)
 
     # Test limiting the results by count
     ranks = ipr.get_ranks(0, count=1)
-    assert ranks[0] == approx(0.453, 0.1)
+    print (ranks)
+    assert ranks[2] == approx(0.645, 0.1)
     assert len(ranks) == 1
 
 
@@ -173,7 +172,7 @@ def test_load_graph_from_persist_store(simple_graph):
     stor.get_graph_and_calc_commands = lambda: (simple_graph, {0: 10})
     ipr1 = IncrementalPageRank(persistent_storage=stor)
     assert ipr1.get_node_edges(0) == [(0, 1, 1), (0, 2, 1)]
-    assert ipr1.get_node_score(0, 1) == 0.24
+    assert ipr1.get_node_score(0, 1) == 0.4
 
 
 def test_persist_edge_and_calc_commands():
@@ -185,4 +184,3 @@ def test_persist_edge_and_calc_commands():
 
     ipr1.calculate(0, 2)
     stor.put_rank_calc_command.assert_called_with(0, 2)
-
