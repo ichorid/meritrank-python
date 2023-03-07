@@ -15,27 +15,27 @@ class EntryType(IntEnum):
 
 class GraphPersistentStore:
     def __init__(self, db_filename: str | None = None):
-        self._db = dbm.open(db_filename or DEFAULT_DB_FILENAME, "cs")
+        self.__db = dbm.open(db_filename or DEFAULT_DB_FILENAME, "cs")
 
     def put_edge(self, src: NodeId, dst: NodeId, weight: float):
-        self._db[pickle.dumps((EntryType.GRAPH_EDGE, (src, dst)))] = pickle.dumps(weight)
+        self.__db[pickle.dumps((EntryType.GRAPH_EDGE, (src, dst)))] = pickle.dumps(weight)
 
     def close(self):
-        self._db.close()
+        self.__db.close()
 
     def put_rank_calc_command(self, node: NodeId, num_walks: int):
-        self._db[pickle.dumps((EntryType.RANK_CALC_COMMAND, node))] = pickle.dumps(num_walks)
+        self.__db[pickle.dumps((EntryType.RANK_CALC_COMMAND, node))] = pickle.dumps(num_walks)
 
     def get_graph_and_calc_commands(self):
         graph = nx.DiGraph()
         commands = {}
-        k = self._db.firstkey()
+        k = self.__db.firstkey()
         while k is not None:
             entry_type, entry_key = pickle.loads(k)
             if entry_type == EntryType.GRAPH_EDGE:
-                weight = pickle.loads(self._db[k])
+                weight = pickle.loads(self.__db[k])
                 graph.add_edge(*entry_key, weight=weight)
             elif entry_type == EntryType.RANK_CALC_COMMAND:
-                commands[entry_key] = pickle.loads(self._db[k])
-            k = self._db.nextkey(k)
+                commands[entry_key] = pickle.loads(self.__db[k])
+            k = self.__db.nextkey(k)
         return graph, commands

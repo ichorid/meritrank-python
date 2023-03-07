@@ -7,7 +7,7 @@ import pytest
 from _pytest.python_api import approx
 from networkx import scale_free_graph
 
-from meritrank_python.rank import RandomWalk, PosWalk, WalksStorage, IncrementalPageRank, NodeDoesNotExist
+from meritrank_python.rank import RandomWalk, PosWalk, WalkStorage, IncrementalPageRank, NodeDoesNotExist
 
 
 def top_items(d, num_items=3):
@@ -33,7 +33,7 @@ def rng():
 
 @pytest.fixture
 def simple_graph():
-    return nx.DiGraph(
+    return (
         {0: {1: {'weight': 1}, 2: {'weight': 1}},
          1: {2: {'weight': 1}}}
     )
@@ -63,8 +63,8 @@ def test_pagerank(simple_graph):
 
 
 def test_pagerank_incremental(simple_graph):
-    ipr1 = IncrementalPageRank(simple_graph)
-    ipr1._graph.add_edge(2, 3, weight=1.0)
+    orig_graph = {2: {3:{"weight":1.0}}} | simple_graph
+    ipr1 = IncrementalPageRank(orig_graph)
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
 
@@ -82,11 +82,9 @@ def test_get_node_edges(simple_graph):
 
 
 def test_pagerank_incremental_basic():
-    graph = nx.DiGraph(
-        {0: {1: {'weight': 1}}}
-    )
-    ipr1 = IncrementalPageRank(graph)
-    ipr1._graph.add_edge(0, 2, weight=1.0)
+    graph = {0: {1: {'weight': 1}}}
+    graph_updated = {0: {1: {'weight': 1}, 2: {'weight':1}}}
+    ipr1 = IncrementalPageRank(graph_updated)
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
 
@@ -103,10 +101,8 @@ def test_calculate_nonexistent_node(simple_graph):
     with pytest.raises(NodeDoesNotExist):
         ipr1.calculate(0)
 
-
 def test_pagerank_incremental_from_empty_graph():
-    ipr1 = IncrementalPageRank()
-    ipr1._graph.add_node(0)
+    ipr1 = IncrementalPageRank(graph={0:{}})
     ipr1.calculate(0)
     ipr1.add_edge(0, 1, weight=1.0)
     ipr1.add_edge(0, 2, weight=1.0)
@@ -119,8 +115,7 @@ def test_pagerank_incremental_big():
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
 
-    ipr2 = IncrementalPageRank()
-    ipr2._graph.add_node(0)
+    ipr2 = IncrementalPageRank(graph={0:{}})
     ipr2.calculate(0)
     for edge in graph.edges():
         ipr2.add_edge(edge[0], edge[1], weight=1.0)
@@ -130,7 +125,7 @@ def test_pagerank_incremental_big():
 
 
 def test_drop_walks():
-    s = WalksStorage()
+    s = WalkStorage()
 
     # Add and drop walks from a single node
     walk0 = RandomWalk([0, 1, 2, 3, 4])
@@ -162,7 +157,7 @@ def test_pos_walk():
 
 
 def test_walks_storage():
-    s = WalksStorage()
+    s = WalkStorage()
     walk = RandomWalk([100, 200, 300])
     s.add_walk(walk)
 
