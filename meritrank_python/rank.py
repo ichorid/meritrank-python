@@ -147,17 +147,27 @@ class IncrementalPageRank:
 
     def perform_walk(self, start_node: NodeId) -> RandomWalk:
         walk = RandomWalk([start_node])
-        self.continue_walk(walk, stop_node=start_node)
+        walk.extend(self.generate_walk_segment(start_node, stop_nodes={start_node}))
         return walk
 
-    def continue_walk(self, walk: RandomWalk, stop_node: NodeId | None = None):
-        while ((neighbours := list(self.__graph.neighbors(node := walk[-1]))) and
+    def generate_walk_segment(self, start_node: NodeId, stop_nodes: {NodeId} = None) -> List[NodeId]:
+        node = start_node
+        walk = []
+        while ((neighbours := list(self.__graph.neighbors(node))) and
                random.random() <= self.alpha):
-            weights = [self.__graph[node][nbr]['weight'] for nbr in neighbours]
-            next_node = random.choices(neighbours, weights=weights, k=1)[0]
-            if next_node == stop_node:
+            neighbours_filtered = []
+            weights = []
+            for nbr in neighbours:
+                # Only walk through positive edges
+                if (weight := self.__graph[node][nbr]['weight']) > 0:
+                    neighbours_filtered.append(nbr)
+                    weights.append(weight)
+            next_step = random.choices(neighbours_filtered, weights=weights, k=1)[0]
+            if next_step in stop_nodes:
                 break
-            walk.append(next_node)
+            walk.append(next_step)
+            node = next_step
+        return walk
 
     def get_edge(self, src: NodeId, dest: NodeId) -> float | None:
         if not self.__graph.has_edge(src, dest):
@@ -187,7 +197,10 @@ class IncrementalPageRank:
             # Finish the invalidated walk. The stochastic nature of random walks
             # allows us to complete a walk by just continuing it until it stops naturally.
             new_fragment_start = len(walk)
-            self.continue_walk(walk, stop_node=starting_node)
+            walk.extend(self.generate_walk_segment(walk[-1], stop_nodes={starting_node}))
+            if walk[0] in set(walk[1:]):
+                pass
+
             counter.update(walk[new_fragment_start:])
 
             self.__walks.add_walk(walk, start_pos=new_fragment_start)
