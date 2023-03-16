@@ -37,8 +37,8 @@ class MeritRankRoutes(Routable):
         return self.__rank.get_walks_count_for_node(src)
 
     @get("/scores/{src}")
-    async def get_scores(self, src: NodeId, count: int | None = None):
-        return self.__rank.get_ranks(src, count=count)
+    async def get_scores(self, src: NodeId, limit: int | None = None):
+        return self.__rank.get_ranks(src, limit=limit)
 
     @get("/node_score/{src}/{dest}")
     async def get_node_score(self, src: NodeId, dest: NodeId):

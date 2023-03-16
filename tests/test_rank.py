@@ -7,7 +7,8 @@ import pytest
 from _pytest.python_api import approx
 from networkx import scale_free_graph
 
-from meritrank_python.rank import RandomWalk, PosWalk, WalkStorage, IncrementalPageRank, NodeDoesNotExist
+from meritrank_python.rank import RandomWalk, PosWalk, WalkStorage, \
+    IncrementalPageRank, NodeDoesNotExist, calculate_walk_penalties
 
 
 def top_items(d, num_items=3):
@@ -19,7 +20,8 @@ def assert_ranking_approx(d1, d2, num_top_items=5, precision=0.2):
     Compare the first num_items of two ranking dicts with given precision
     """
 
-    assert top_items(d1, num_top_items) == approx(top_items(d2, num_top_items), rel=precision)
+    assert top_items(d1, num_top_items) == approx(top_items(d2, num_top_items),
+                                                  rel=precision)
 
 
 def test_assert_ranking_approx():
@@ -39,6 +41,14 @@ def simple_graph():
     )
 
 
+@pytest.fixture
+def simple_graph_negative():
+    return (
+        {0: {1: {'weight': 1}, 2: {'weight': 1}},
+         1: {2: {'weight': -1}}}
+    )
+
+
 def get_scale_free_graph(count):
     graph = scale_free_graph(count)
     weighted_graph = nx.DiGraph(seed=123)
@@ -47,23 +57,53 @@ def get_scale_free_graph(count):
     return weighted_graph
 
 
+def test_update_walk_penalties():
+    empty_walk = []
+    walk = [1, 2, 3, 4, 5]
+    walk_repeated_node = [1, 2, 3, 2, 4]
+
+    empty_negs = {}
+    single_neg = {4: -1.0}
+    two_negs = {3: -1.0, 4: -1.0}
+    neg_not_in_walk = {100500: -1000.0}
+
+    f = calculate_walk_penalties
+
+    assert f(empty_walk, empty_negs) == ({}, {}, 0)
+    assert f(walk, empty_negs) == ({}, {}, 0)
+    assert f(walk, single_neg) == (
+    {4: -1.0}, {1: -1.0, 2: -1.0, 3: -1.0}, -1.0)
+    assert f(walk, two_negs) == (
+    {3: -1.0, 4: -1.0}, {1: -2.0, 2: -2.0, 3: -1.0, }, -2.0)
+    assert f(walk, neg_not_in_walk) == ({}, {}, 0.0)
+    assert f(walk_repeated_node, single_neg) == (
+    {4: -1.0}, {1: -1.0, 2: -1.0, 3: -1.0}, -1.0)
+    assert f(walk_repeated_node, two_negs) == (
+    {3: -1.0, 4: -1.0}, {1: -2.0, 2: -2.0, 3: -1.0}, -2.0)
+
+
 def test_pagerank(simple_graph):
-    # rank = nx.pagerank(simple_graph, personalization={0: 1})
-    # print(rank)
     ipr = IncrementalPageRank(simple_graph)
     ipr.calculate(0)
     ranks = ipr.get_ranks(0)
     assert ranks == approx({1: 0.354, 2: 0.645}, 0.1)
 
     # Test limiting the results by count
-    ranks = ipr.get_ranks(0, count=1)
-    print (ranks)
+    ranks = ipr.get_ranks(0, limit=1)
+    print(ranks)
     assert ranks[2] == approx(0.645, 0.1)
     assert len(ranks) == 1
 
 
+def test_meritrank_negative(simple_graph_negative):
+    ipr = IncrementalPageRank(simple_graph_negative)
+    ipr.calculate(0)
+    ranks = ipr.get_ranks(0)
+    assert ranks == approx({1: 0.354, 2: 0.645}, 0.1)
+
+
 def test_pagerank_incremental(simple_graph):
-    orig_graph = {2: {3:{"weight":1.0}}} | simple_graph
+    orig_graph = {2: {3: {"weight": 1.0}}} | simple_graph
     ipr1 = IncrementalPageRank(orig_graph)
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
@@ -83,7 +123,7 @@ def test_get_node_edges(simple_graph):
 
 def test_pagerank_incremental_basic():
     graph = {0: {1: {'weight': 1}}}
-    graph_updated = {0: {1: {'weight': 1}, 2: {'weight':1}}}
+    graph_updated = {0: {1: {'weight': 1}, 2: {'weight': 1}}}
     ipr1 = IncrementalPageRank(graph_updated)
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
@@ -101,8 +141,9 @@ def test_calculate_nonexistent_node(simple_graph):
     with pytest.raises(NodeDoesNotExist):
         ipr1.calculate(0)
 
+
 def test_pagerank_incremental_from_empty_graph():
-    ipr1 = IncrementalPageRank(graph={0:{}})
+    ipr1 = IncrementalPageRank(graph={0: {}})
     ipr1.calculate(0)
     ipr1.add_edge(0, 1, weight=1.0)
     ipr1.add_edge(0, 2, weight=1.0)
@@ -115,7 +156,7 @@ def test_pagerank_incremental_big():
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
 
-    ipr2 = IncrementalPageRank(graph={0:{}})
+    ipr2 = IncrementalPageRank(graph={0: {}})
     ipr2.calculate(0)
     for edge in graph.edges():
         ipr2.add_edge(edge[0], edge[1], weight=1.0)
