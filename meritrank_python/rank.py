@@ -18,9 +18,47 @@ class NodeDoesNotExist(Exception):
 
 
 class RandomWalk(List[NodeId]):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.uuid = uuid.uuid4()
+
+    def calculate_penalties(self, neg_weights: Dict[NodeId, float]) -> (
+            Dict[NodeId, float]):
+        # Penalty calculation logic:
+        # 1. The penalty is accumulated by walking backwards from the last
+        # node in the segment.
+        # 2. If a node is encountered in the walk more than once, its penalty
+        # is updated to the highest current accumulated penalty
+        # 3. If a penalty-inducing node (called a "neg" for short)
+        # is encountered more than once, its effect is not accumulated.
+        #
+        # In a sense, every neg in the walk produces a "tag", so each node
+        # in the walk leading up to a given neg is "tagged" by it,
+        # and then each "tagged" node is penalized according
+        # to the weight of the "tags" associated with the negs.
+        #
+        # Example:
+        # nodes D and F both are negs of weight 1
+        # node B is repeated twice in positions 2-3
+        #         ◄─+tag F────────┐
+        #         ◄─+tag D──┐     │
+        #        ┌──────────┴─────┴────┐
+        #        │ A  B  B  D  E  F  G │
+        #        └─────────────────────┘
+        # Resulting penalties for the nodes:
+        # node     A  -  B  D  E  F  G
+        # "tags"   DF -  DF F  F
+        # penalty  2  -  2  1  1  0  0
+        #
+        penalties: Dict[NodeId, float] = {}
+        negs = neg_weights.copy()
+        acc_penalty = 0.0
+        for step in reversed(self):
+            if acc_penalty != 0.0:
+                penalties[step] = acc_penalty
+            if penalty := negs.pop(step, None):
+                acc_penalty += penalty
+        return penalties
 
 
 @dataclass
@@ -32,7 +70,7 @@ class PosWalk:
 
 class WalkStorage:
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.__walks: Dict[NodeId, Dict[uuid.UUID, PosWalk]] = {}
 
     def walks_starting_from_node(self, src: NodeId) -> list[RandomWalk]:
@@ -77,15 +115,16 @@ class WalkStorage:
             pos, walk = pos_walk.pos, pos_walk.walk
             # For every node mentioned in the invalidated subsequence,
             # remove the corresponding entries in the bookkeeping dict
-            invalidated_segment = walk[pos + 1:]
+            invalidated_segment = RandomWalk(walk[pos + 1:])
             for affected_node in invalidated_segment:
-                # if a node is encountered in the walk more than once, don't
-                # remove it, for not to shoot ourselves in the foot.
-                # Also, don't try to remove the walk twice from the same node
-                if (affected_node != invalidated_node and
-                        affected_node in self.__walks and
-                        uid in self.__walks[affected_node]):
-                    self.__walks[affected_node].pop(uid)
+                # if the invalidated node is encountered in the invalidated
+                # subsequence (i.e. there was more than one copy in the
+                # original walk) - don't accidentally remove it, for not to
+                # shoot ourselves in the foot (it still belongs to the
+                # remaining segment).
+                if affected_node == invalidated_node:
+                    continue
+                self.__walks.get(affected_node, {}).pop(uid, None)
 
             # Remove the invalidated subsequence from the walk
             del walk[pos + 1:]
@@ -96,23 +135,8 @@ class WalkStorage:
         return self.__walks.get(node)
 
 
-def calculate_walk_penalties(
-        segment: List[NodeId], neg_weights: Dict[NodeId, float]) -> (
-        Dict[NodeId, float], Dict[NodeId, float], float):
-    negs_encountered: Dict[NodeId, float] = {}
-    penalties_update: Dict[NodeId, float] = {}
-    acc_penalty = 0.0
-    for step in reversed(segment):
-        if acc_penalty:
-            penalties_update[step] = acc_penalty
-        if penalty := neg_weights.get(step):
-            negs_encountered[step] = penalty
-            acc_penalty += penalty
-    return negs_encountered, penalties_update, acc_penalty
-
-
 class IncrementalPageRank:
-    def __init__(self, graph=None, persistent_storage=None):
+    def __init__(self, graph=None, persistent_storage=None) -> None:
         self.__persistent_storage = persistent_storage
         # FIXME: graph vs persistent_storage options
         rank_calc_commands = None
@@ -122,7 +146,7 @@ class IncrementalPageRank:
         self.__graph = nx.DiGraph(graph)
         self.__walks = WalkStorage()
         self.__personal_hits: Dict[NodeId, Counter] = {}
-        self.__neg_hits: Dict[NodeId, Dict[NodeId, set[NodeId]]] = {}
+        self.__neg_hits: Dict[NodeId, Dict[NodeId, float]] = {}
         self.alpha = 0.85
 
         if rank_calc_commands is not None:
@@ -171,8 +195,8 @@ class IncrementalPageRank:
 
     def perform_walk(self, start_node: NodeId) -> RandomWalk:
         walk = RandomWalk([start_node])
-        new_segment, stop_reason = self.__generate_walk_segment(
-            start_node, stop_nodes={start_node})
+        new_segment = self.__generate_walk_segment(
+            start_node, stop_node=start_node)
         walk.extend(new_segment)
         return walk
 
@@ -189,20 +213,18 @@ class IncrementalPageRank:
         return neighbours
 
     def __generate_walk_segment(self, start_node: NodeId,
-                                stop_nodes: {NodeId} = None) -> (
-            List[NodeId], NodeId | None):
+                                stop_node: NodeId) -> RandomWalk:
         node = start_node
-        walk = []
-        stop_reason = None
+        walk = RandomWalk()
         while ((neighbours := self.__neighbours_weighted(node))
                and random.random() <= self.alpha):
             peers, weights = zip(*neighbours.items())
             next_step = random.choices(peers, weights=weights, k=1)[0]
-            if stop_reason := next_step in stop_nodes:
+            if next_step == stop_node:
                 break
             walk.append(next_step)
             node = next_step
-        return walk, stop_reason
+        return walk
 
     def get_edge(self, src: NodeId, dest: NodeId) -> float | None:
         if not self.__graph.has_edge(src, dest):
@@ -217,7 +239,10 @@ class IncrementalPageRank:
 
     def __persist_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
         if self.__persistent_storage is not None:
-            self.__persistent_storage.put_edge(src, dest, weight)
+            if weight == 0.0:
+                self.__persistent_storage.remove_edge(src, dest)
+            else:
+                self.__persistent_storage.put_edge(src, dest, weight)
 
     def __update_penalties_for_edge(self,
                                     src: NodeId,
@@ -235,17 +260,23 @@ class IncrementalPageRank:
         # b. we would have to sequentially iterate through all the steps in every
         #   single one of those 1k walks.
         # Therefore, we use method (1)
-        affected_walks = [pw.walk for pw in
-                          self.__walks.get_walks_through_node(dest).values() if
-                          pw.walk[0] == src]
+
+        # Get all walks that pass through the destination node and start with the source node
+        affected_walks = []
+        walks_through_dest = self.__walks.get_walks_through_node(dest)
+        for pw in walks_through_dest.values():
+            if pw.walk[0] == src:
+                affected_walks.append(pw.walk)
+
+        # Calculate penalties and update neg_hits for each affected walk
         weight = self.__graph[src][dest]['weight']
+        ego_neg_hits = self.__neg_hits.setdefault(src, {})
         for walk in affected_walks:
-            ego = walk[0]
-            ego_neg_hits = self.__neg_hits[ego] = self.__neg_hits.get(ego, {})
-            _, penalties, _ = calculate_walk_penalties(walk, {dest: weight})
+            penalties = walk.calculate_penalties({dest: weight})
             for node, penalty in penalties.items():
-                ego_neg_hits[node] = ego_neg_hits.get(node, 0) + (
-                    -penalty if remove_penalties else penalty)
+                if remove_penalties:
+                    penalty = -penalty
+                ego_neg_hits[node] = ego_neg_hits.setdefault(node, 0) + penalty
 
     def __recalc_invalidated_walk(self, walk, invalidated_segment):
         # Possible optimization: instead of dropping the walk and then
@@ -263,19 +294,15 @@ class IncrementalPageRank:
         # walks allows us to complete a walk by just continuing it until
         # it stops naturally.
         new_segment_start = len(walk)
-        new_segment, stop_reason = self.__generate_walk_segment(
-            walk[-1], stop_nodes={ego})
+        new_segment = self.__generate_walk_segment(walk[-1], stop_node=ego)
         walk.extend(new_segment)
 
-        # negs = self.__neighbours_weighted(ego, positive=False)
-        # self.__update_negative_hits(walk, new_segment, invalidated_segment, negs)
         counter.update(walk[new_segment_start:])
         self.__walks.add_walk(walk, start_pos=new_segment_start)
 
-
     def add_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
         old_edge = self.get_edge(src, dest)
-        old_weight = self.__graph[src][dest]['weight'] if old_edge else 0
+        old_weight = self.__graph[src][dest]['weight'] if old_edge else 0.0
         if old_weight == weight:
             return
         self.__persist_edge(src, dest, weight)
@@ -287,13 +314,13 @@ class IncrementalPageRank:
         # coded by the combination of the old and new weights of the edge, e.g:
         # "zp" = zero old weight -> positive new weight, etc.
 
-        def zz(*args):
+        def zz(*_):
             # Nothing to do - noop
             pass
 
-        def zp(src, dest, weight):
+        def zp(s, d, w):
             # Clear penalties resulting from the invalidated walks
-            invalidated_walks = self.__walks.invalidate_walks_through_node(src)
+            invalidated_walks = self.__walks.invalidate_walks_through_node(s)
 
             negs_cache = {}
             for (walk, invalidated_segment) in invalidated_walks:
@@ -301,24 +328,25 @@ class IncrementalPageRank:
                     walk[0], positive=False)
                 # The change includes a positive edge (former or new),
                 # so we must first clear the negative walks going through it.
-                self.__clear_walk_penalties(walk + invalidated_segment, negs)
+                self.__update_negative_hits(walk + invalidated_segment, negs,
+                                            subtract=True)
 
-            if weight == 0.0:
-                self.__graph.remove_edge(src, dest)
+            if w == 0.0:
+                self.__graph.remove_edge(s, d)
             else:
-                self.__graph.add_edge(src, dest, weight=weight)
+                self.__graph.add_edge(s, d, weight=w)
 
             # Restore the walks and recalculate the penalties
             for (walk, invalidated_segment) in invalidated_walks:
                 self.__recalc_invalidated_walk(walk, invalidated_segment)
                 self.__update_negative_hits(walk, negs_cache[walk[0]])
 
-        def zn(src, dest, weight):
-            self.__graph.add_edge(src, dest, weight=weight)
-            self.__update_penalties_for_edge(src, dest, weight)
+        def zn(s, d, w):
+            self.__graph.add_edge(s, d, weight=w)
+            self.__update_penalties_for_edge(s, d, w)
 
-        def pz(src, dest, _):
-            zp(src, dest, 0.0)
+        def pz(s, d, _):
+            zp(s, d, 0.0)
 
         def pp(*args):
             zp(*args)
@@ -327,13 +355,13 @@ class IncrementalPageRank:
             pz(*args)
             zn(*args)
 
-        def nz(src, dest, _):
+        def nz(s, d, _):
             # The old edge was a negative edge, so we must clear all
             # the negative walks produced by it (i.e. ended in it) for
             # the respective ego node. Effectively, this means removing
             # all the negative walks starting from src and ending in dest.
-            self.__update_penalties_for_edge(src, dest, remove_penalties=True)
-            self.__graph.remove_edge(src, dest)
+            self.__update_penalties_for_edge(s, d, remove_penalties=True)
+            self.__graph.remove_edge(s, d)
 
         def np(*args):
             nz(*args)
@@ -349,55 +377,18 @@ class IncrementalPageRank:
          [pz, pp, pn],
          [nz, np, nn]][row][column](src, dest, weight)
 
-    def __clear_walk_penalties(self, walk: [NodeId], negs):
-        ego = walk[0]
-        if not (set(negs.keys()) & set(walk)):
+    def __update_negative_hits(self,
+                               walk: RandomWalk,
+                               negs: Dict[NodeId, float],
+                               subtract: bool = False) -> None:
+        if not set(negs).intersection(walk):
             return
-        ego_neg_hits = self.__neg_hits[ego] = self.__neg_hits.get(ego, {})
-
-        # First, clean the invalidated negs from the original walk
-        _, old_penalties, _ = calculate_walk_penalties(walk, negs)
-        for node, penalty in old_penalties:
-            ego_neg_hits[node] -= penalty
-
-    def __update_negative_hits(self, walk: RandomWalk, negs):
-        # FIXME: case for changes in negs set (removal or change of a neg)
-        # Penalty calculation logic:
-        # 1. The penalty is accumulated by walking backwards from the last
-        # node in the segment.
-        # 2. If a node is encountered in the walk more than once, its penalty
-        # is updated to the highest current accumulated penalty
-        # 3. If a penalty-inducing node (called a "neg" for short)
-        # is encountered more than once, its effect is not accumulated.
-        #
-        # In a sense, every neg in the walk produces a "tag", so each node
-        # in the walk leading up to a given neg is "tagged" by it,
-        # and then each "tagged" node is penalized according
-        # to the weight of the "tags" associated with the negs.
-        #
-        # Example:
-        # nodes D and F both are negs of weight 1
-        # node B is repeated twice in positions 2-3
-        #         ◄─+tag F────────┐
-        #         ◄─+tag D──┐     │
-        #        ┌──────────┴─────┴────┐
-        #        │ A  B  B  D  E  F  G │
-        #        └─────────────────────┘
-        # Resulting penalties for the nodes:
-        # node     A  -  B  D  E  F  G
-        # "tags"   DF -  DF F  F
-        # penalty  2  -  2  1  1  0  0
-        #
-        ego = walk[0]
-        if not (set(negs.keys()) & set(walk)):
-            return
-        ego_neg_hits = self.__neg_hits[ego] = self.__neg_hits.get(ego, {})
+        ego_neg_hits = self.__neg_hits.setdefault(walk[0], {})
 
         # Note this can be further optimized by memorizing the positions of
         # the negs during the walk generation.
 
-        # Next, pass through the new segment,
-        # collect new negs and simultaneously apply them
-        _, new_penalties, _ = calculate_walk_penalties(walk, negs)
-        for node, penalty in new_penalties:
+        for node, penalty in walk.calculate_penalties(negs).items():
+            if subtract:
+                penalty = -penalty
             ego_neg_hits[node] = ego_neg_hits.get(node, 0) + penalty

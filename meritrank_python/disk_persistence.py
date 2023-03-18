@@ -20,6 +20,10 @@ class GraphPersistentStore:
     def put_edge(self, src: NodeId, dst: NodeId, weight: float):
         self.__db[pickle.dumps((EntryType.GRAPH_EDGE, (src, dst)))] = pickle.dumps(weight)
 
+    def remove_edge(self, src: NodeId, dst: NodeId):
+        # TODO
+        pass
+
     def close(self):
         self.__db.close()
 
