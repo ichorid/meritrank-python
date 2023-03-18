@@ -2,6 +2,7 @@ import random
 import uuid
 from collections import Counter
 from dataclasses import dataclass
+from math import copysign
 from typing import Dict, List, Tuple, TypeAlias
 
 import networkx as nx
@@ -63,6 +64,9 @@ class WalkStorage:
             for affected_node in walk:
                 del self.__walks[affected_node][walk.uuid]
         self.__walks.get(node, {}).clear()
+
+    def get_walks_through_node(self, node: NodeId):
+        return self.__walks.get(node, {})
 
     def invalidate_walks_through_node(self, invalidated_node: NodeId) -> \
             List[Tuple[RandomWalk, RandomWalk]]:
@@ -215,32 +219,148 @@ class IncrementalPageRank:
         if self.__persistent_storage is not None:
             self.__persistent_storage.put_edge(src, dest, weight)
 
-    def add_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
-        self.__graph.add_edge(src, dest, weight=weight)
-        self.__persist_edge(src, dest, weight)
-        invalidated_walks = self.__walks.invalidate_walks_through_node(src)
-        for (walk, invalidated_segment) in invalidated_walks:
-            # Subtract the nodes in the invalidated sequence from the hit
-            # counter for the starting node of the invalidated walk.
+    def __update_penalties_for_edge(self,
+                                    src: NodeId,
+                                    dest: NodeId,
+                                    remove_penalties: bool = True) -> None:
+        # Note: there are two ways to iterate over this:
+        # 1. first get all the walks through the new destination node,
+        #   then filter the results for walks that start with the source (ego) node.
+        # 2. first get all the walks starting from the source (ego) node, then
+        #   filter the results for walks that pass through the destination node.
+        # The method (1) should be much more efficient for all cases but very specific
+        # ones, such as extra-popular nodes in databases with a very large number of
+        # ego nodes (i.e. maintained ratings). The reasons for efficiency of (1) are
+        # a. for each ego node there are always at least 1k walks
+        # b. we would have to sequentially iterate through all the steps in every
+        #   single one of those 1k walks.
+        # Therefore, we use method (1)
+        affected_walks = [pw.walk for pw in
+                          self.__walks.get_walks_through_node(dest).values() if
+                          pw.walk[0] == src]
+        weight = self.__graph[src][dest]['weight']
+        for walk in affected_walks:
             ego = walk[0]
-            counter = self.__personal_hits[ego]
-            counter.subtract(invalidated_segment)
+            ego_neg_hits = self.__neg_hits[ego] = self.__neg_hits.get(ego, {})
+            _, penalties, _ = calculate_walk_penalties(walk, {dest: weight})
+            for node, penalty in penalties.items():
+                ego_neg_hits[node] = ego_neg_hits.get(node, 0) + (
+                    -penalty if remove_penalties else penalty)
 
-            # Finish the invalidated walk. The stochastic nature of random
-            # walks allows us to complete a walk by just continuing it until
-            # it stops naturally.
-            new_segment_start = len(walk)
-            new_segment, stop_reason = self.__generate_walk_segment(
-                walk[-1], stop_nodes={ego})
-            self.__update_negative_hits(walk, new_segment, invalidated_segment)
-            walk.extend(new_segment)
+    def __recalc_invalidated_walk(self, walk, invalidated_segment):
+        # Possible optimization: instead of dropping the walk and then
+        # recalculating it, reuse fragments from previously dropped walks.
+        # The problem is care must be taken to handle loops when going through
+        # the changed edges, and fair stochastic selection of fragments.
 
-            counter.update(walk[new_segment_start:])
-            self.__walks.add_walk(walk, start_pos=new_segment_start)
+        # Subtract the nodes in the invalidated sequence from the hit
+        # counter for the starting node of the invalidated walk.
+        ego = walk[0]
+        counter = self.__personal_hits[ego]
+        counter.subtract(invalidated_segment)
 
-    def __update_negative_hits(self, walk: RandomWalk,
-                               new_segment: List[NodeId],
-                               invalidated_segment: List[NodeId]):
+        # Finish the invalidated walk. The stochastic nature of random
+        # walks allows us to complete a walk by just continuing it until
+        # it stops naturally.
+        new_segment_start = len(walk)
+        new_segment, stop_reason = self.__generate_walk_segment(
+            walk[-1], stop_nodes={ego})
+        walk.extend(new_segment)
+
+        # negs = self.__neighbours_weighted(ego, positive=False)
+        # self.__update_negative_hits(walk, new_segment, invalidated_segment, negs)
+        counter.update(walk[new_segment_start:])
+        self.__walks.add_walk(walk, start_pos=new_segment_start)
+
+
+    def add_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
+        old_edge = self.get_edge(src, dest)
+        old_weight = self.__graph[src][dest]['weight'] if old_edge else 0
+        if old_weight == weight:
+            return
+        self.__persist_edge(src, dest, weight)
+
+        # There are nine cases for adding/updating an edge: the variants are
+        # negative, zero, and positive weight for both the old and the new
+        # state of the edge. For clarity, we arrange all the variants in a
+        # matrix, and then call the necessary variant. The functions are
+        # coded by the combination of the old and new weights of the edge, e.g:
+        # "zp" = zero old weight -> positive new weight, etc.
+
+        def zz(*args):
+            # Nothing to do - noop
+            pass
+
+        def zp(src, dest, weight):
+            # Clear penalties resulting from the invalidated walks
+            invalidated_walks = self.__walks.invalidate_walks_through_node(src)
+
+            negs_cache = {}
+            for (walk, invalidated_segment) in invalidated_walks:
+                negs = negs_cache[walk[0]] = self.__neighbours_weighted(
+                    walk[0], positive=False)
+                # The change includes a positive edge (former or new),
+                # so we must first clear the negative walks going through it.
+                self.__clear_walk_penalties(walk + invalidated_segment, negs)
+
+            if weight == 0.0:
+                self.__graph.remove_edge(src, dest)
+            else:
+                self.__graph.add_edge(src, dest, weight=weight)
+
+            # Restore the walks and recalculate the penalties
+            for (walk, invalidated_segment) in invalidated_walks:
+                self.__recalc_invalidated_walk(walk, invalidated_segment)
+                self.__update_negative_hits(walk, negs_cache[walk[0]])
+
+        def zn(src, dest, weight):
+            self.__graph.add_edge(src, dest, weight=weight)
+            self.__update_penalties_for_edge(src, dest, weight)
+
+        def pz(src, dest, _):
+            zp(src, dest, 0.0)
+
+        def pp(*args):
+            zp(*args)
+
+        def pn(*args):
+            pz(*args)
+            zn(*args)
+
+        def nz(src, dest, _):
+            # The old edge was a negative edge, so we must clear all
+            # the negative walks produced by it (i.e. ended in it) for
+            # the respective ego node. Effectively, this means removing
+            # all the negative walks starting from src and ending in dest.
+            self.__update_penalties_for_edge(src, dest, remove_penalties=True)
+            self.__graph.remove_edge(src, dest)
+
+        def np(*args):
+            nz(*args)
+            zp(*args)
+
+        def nn(*args):
+            nz(*args)
+            zn(*args)
+
+        row = int(copysign(1, old_weight))
+        column = int(copysign(1, weight))
+        [[zz, zp, zn],
+         [pz, pp, pn],
+         [nz, np, nn]][row][column](src, dest, weight)
+
+    def __clear_walk_penalties(self, walk: [NodeId], negs):
+        ego = walk[0]
+        if not (set(negs.keys()) & set(walk)):
+            return
+        ego_neg_hits = self.__neg_hits[ego] = self.__neg_hits.get(ego, {})
+
+        # First, clean the invalidated negs from the original walk
+        _, old_penalties, _ = calculate_walk_penalties(walk, negs)
+        for node, penalty in old_penalties:
+            ego_neg_hits[node] -= penalty
+
+    def __update_negative_hits(self, walk: RandomWalk, negs):
         # FIXME: case for changes in negs set (removal or change of a neg)
         # Penalty calculation logic:
         # 1. The penalty is accumulated by walking backwards from the last
@@ -269,35 +389,15 @@ class IncrementalPageRank:
         # penalty  2  -  2  1  1  0  0
         #
         ego = walk[0]
-        ego_negs = self.__neighbours_weighted(ego, positive=False)
-        if not (set(ego_negs.keys()) &
-                set(walk + new_segment + invalidated_segment)):
+        if not (set(negs.keys()) & set(walk)):
             return
         ego_neg_hits = self.__neg_hits[ego] = self.__neg_hits.get(ego, {})
 
         # Note this can be further optimized by memorizing the positions of
         # the negs during the walk generation.
 
-        # First, clean the invalidated negs from the original walk
-        old_negs, old_penalties, total_penalty_to_remove = calculate_walk_penalties(
-            invalidated_segment, ego_negs)
-        for node, penalty in old_penalties:
-            ego_neg_hits[node] -= penalty
-
         # Next, pass through the new segment,
         # collect new negs and simultaneously apply them
-        new_negs, new_penalties, total_penalty_to_add = calculate_walk_penalties(
-            new_segment, ego_negs)
+        _, new_penalties, _ = calculate_walk_penalties(walk, negs)
         for node, penalty in new_penalties:
             ego_neg_hits[node] = ego_neg_hits.get(node, 0) + penalty
-
-        net_penalty = total_penalty_to_add - total_penalty_to_remove
-        # Now pass through the unchanged walk segment,
-        # both removing the old penalties and adding the new ones
-        for step in reversed(walk[1:]):
-            # ACTHUNG! if there is an encounter of a neg to remove in the
-            # walk segment to keep, we must re-add that neg to the walk,
-            # from that point.
-            net_penalty += old_negs.pop(step, 0)
-
-            ego_neg_hits[step] += net_penalty
