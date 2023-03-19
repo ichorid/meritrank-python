@@ -170,11 +170,15 @@ class IncrementalPageRank:
         if not self.__graph.has_node(ego):
             raise NodeDoesNotExist
 
+        negs = self.__neighbours_weighted(ego, positive=False)
+
         counter = self.__personal_hits[ego] = Counter()
         for _ in range(0, num_walks):
             walk = self.perform_walk(ego)
             counter.update(walk[1:])
             self.__walks.add_walk(walk)
+            self.__update_negative_hits(walk, negs)
+        print(self.__neg_hits)
 
     def get_node_score(self, ego: NodeId, target: NodeId):
         counter = self.__personal_hits[ego]
@@ -183,15 +187,20 @@ class IncrementalPageRank:
         hits = counter[target]
 
         # TODO: normalize the negative hits?
-        hits_penalized = hits - self.__neg_hits.get(ego, {}).get(target, 0)
+        hits_penalized = hits + self.__neg_hits.get(ego, {}).get(target, 0)
         return hits_penalized / counter.total()
 
     def get_ranks(self, ego: NodeId, limit=None):
+        # FIXME: optimize out repeated totals, etc.
         counter = self.__personal_hits[ego]
-        total = counter.total()
-        sorted_ranks = sorted(counter.items(), key=lambda x: x[1],
-                              reverse=True)[:limit]
-        return {node: hits / total for node, hits in sorted_ranks}
+        peer_scores = []
+        for peer in counter.keys():
+            peer_scores.append((peer, self.get_node_score(ego, peer)))
+
+        sorted_ranks = sorted(peer_scores, key=lambda x: x[1], reverse=True)[
+                       :limit]
+
+        return sorted_ranks
 
     def perform_walk(self, start_node: NodeId) -> RandomWalk:
         walk = RandomWalk([start_node])

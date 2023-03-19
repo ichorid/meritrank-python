@@ -8,7 +8,7 @@ from _pytest.python_api import approx
 from networkx import scale_free_graph
 
 from meritrank_python.rank import RandomWalk, PosWalk, WalkStorage, \
-    IncrementalPageRank, NodeDoesNotExist, calculate_walk_penalties
+    IncrementalPageRank, NodeDoesNotExist
 
 
 def top_items(d, num_items=3):
@@ -44,8 +44,8 @@ def simple_graph():
 @pytest.fixture
 def simple_graph_negative():
     return (
-        {0: {1: {'weight': 1}, 2: {'weight': 1}},
-         1: {2: {'weight': -1}}}
+        {0: {1: {'weight': 1}, 2: {'weight': -2}},
+         1: {2: {'weight': 1}}}
     )
 
 
@@ -58,28 +58,24 @@ def get_scale_free_graph(count):
 
 
 def test_update_walk_penalties():
-    empty_walk = []
-    walk = [1, 2, 3, 4, 5]
-    walk_repeated_node = [1, 2, 3, 2, 4]
+    empty_walk = RandomWalk()
+    walk = RandomWalk([1, 2, 3, 4, 5])
+    walk_repeated_node = RandomWalk([1, 2, 3, 2, 4])
 
     empty_negs = {}
     single_neg = {4: -1.0}
     two_negs = {3: -1.0, 4: -1.0}
     neg_not_in_walk = {100500: -1000.0}
 
-    f = calculate_walk_penalties
+    f = RandomWalk.calculate_penalties
 
-    assert f(empty_walk, empty_negs) == ({}, {}, 0)
-    assert f(walk, empty_negs) == ({}, {}, 0)
-    assert f(walk, single_neg) == (
-    {4: -1.0}, {1: -1.0, 2: -1.0, 3: -1.0}, -1.0)
-    assert f(walk, two_negs) == (
-    {3: -1.0, 4: -1.0}, {1: -2.0, 2: -2.0, 3: -1.0, }, -2.0)
-    assert f(walk, neg_not_in_walk) == ({}, {}, 0.0)
-    assert f(walk_repeated_node, single_neg) == (
-    {4: -1.0}, {1: -1.0, 2: -1.0, 3: -1.0}, -1.0)
-    assert f(walk_repeated_node, two_negs) == (
-    {3: -1.0, 4: -1.0}, {1: -2.0, 2: -2.0, 3: -1.0}, -2.0)
+    assert f(empty_walk, empty_negs) == {}
+    assert f(walk, empty_negs) == {}
+    assert f(walk, single_neg) == {1: -1.0, 2: -1.0, 3: -1.0}
+    assert f(walk, two_negs) == {1: -2.0, 2: -2.0, 3: -1.0, }
+    assert f(walk, neg_not_in_walk) == {}
+    assert f(walk_repeated_node, single_neg) == {1: -1.0, 2: -1.0, 3: -1.0}
+    assert f(walk_repeated_node, two_negs) == {1: -2.0, 2: -2.0, 3: -1.0}
 
 
 def test_pagerank(simple_graph):
