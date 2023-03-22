@@ -2,7 +2,6 @@ import random
 import uuid
 from collections import Counter
 from dataclasses import dataclass
-from math import copysign
 from typing import Dict, List, Tuple, TypeAlias
 
 import networkx as nx
@@ -11,6 +10,14 @@ import networkx as nx
 # https://tommyseattle.com/tech/python-class-dict-named-tuple-memory-and-perf.html
 
 NodeId: TypeAlias = int
+
+
+def sign(x: float) -> int:
+    if x > 0:
+        return 1
+    elif x < 0:
+        return -1
+    return 0
 
 
 class NodeDoesNotExist(Exception):
@@ -48,16 +55,16 @@ class RandomWalk(List[NodeId]):
         # Resulting penalties for the nodes:
         # node     A  -  B  D  E  F  G
         # "tags"   DF -  DF F  F
-        # penalty  2  -  2  1  1  0  0
+        # penalty  2  -  2  2  1  1  0
         #
         penalties: Dict[NodeId, float] = {}
         negs = neg_weights.copy()
-        acc_penalty = 0.0
+        accumulated_penalty = 0.0
         for step in reversed(self):
-            if acc_penalty != 0.0:
-                penalties[step] = acc_penalty
             if penalty := negs.pop(step, None):
-                acc_penalty += penalty
+                accumulated_penalty += penalty
+            if accumulated_penalty != 0.0:
+                penalties[step] = accumulated_penalty
         return penalties
 
 
@@ -178,7 +185,6 @@ class IncrementalPageRank:
             counter.update(walk[1:])
             self.__walks.add_walk(walk)
             self.__update_negative_hits(walk, negs)
-        print(self.__neg_hits)
 
     def get_node_score(self, ego: NodeId, target: NodeId):
         counter = self.__personal_hits[ego]
@@ -200,7 +206,11 @@ class IncrementalPageRank:
         sorted_ranks = sorted(peer_scores, key=lambda x: x[1], reverse=True)[
                        :limit]
 
-        return sorted_ranks
+        return dict(sorted_ranks)
+
+    def get_ordered_peers(self, ego: NodeId, limit=None):
+        return [k for k, v in sorted(self.get_ranks(ego, limit).items(),
+                                     key=lambda x: x[1], reverse=True)]
 
     def perform_walk(self, start_node: NodeId) -> RandomWalk:
         walk = RandomWalk([start_node])
@@ -256,7 +266,7 @@ class IncrementalPageRank:
     def __update_penalties_for_edge(self,
                                     src: NodeId,
                                     dest: NodeId,
-                                    remove_penalties: bool = True) -> None:
+                                    remove_penalties: bool = False) -> None:
         # Note: there are two ways to iterate over this:
         # 1. first get all the walks through the new destination node,
         #   then filter the results for walks that start with the source (ego) node.
@@ -337,11 +347,13 @@ class IncrementalPageRank:
                     walk[0], positive=False)
                 # The change includes a positive edge (former or new),
                 # so we must first clear the negative walks going through it.
-                self.__update_negative_hits(walk + invalidated_segment, negs,
-                                            subtract=True)
+                self.__update_negative_hits(
+                    RandomWalk(walk + invalidated_segment), negs,
+                    subtract=True)
 
             if w == 0.0:
-                self.__graph.remove_edge(s, d)
+                if self.__graph.has_edge(s, d):
+                    self.__graph.remove_edge(s, d)
             else:
                 self.__graph.add_edge(s, d, weight=w)
 
@@ -352,7 +364,7 @@ class IncrementalPageRank:
 
         def zn(s, d, w):
             self.__graph.add_edge(s, d, weight=w)
-            self.__update_penalties_for_edge(s, d, w)
+            self.__update_penalties_for_edge(s, d)
 
         def pz(s, d, _):
             zp(s, d, 0.0)
@@ -380,8 +392,8 @@ class IncrementalPageRank:
             nz(*args)
             zn(*args)
 
-        row = int(copysign(1, old_weight))
-        column = int(copysign(1, weight))
+        row = sign(old_weight)
+        column = sign(weight)
         [[zz, zp, zn],
          [pz, pp, pn],
          [nz, np, nn]][row][column](src, dest, weight)
