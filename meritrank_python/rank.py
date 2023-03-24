@@ -160,6 +160,9 @@ class IncrementalPageRank:
             for node, num_walks in rank_calc_commands.items():
                 self.calculate(node, num_walks)
 
+    def get_graph(self):
+        return nx.to_dict_of_dicts(self.__graph)
+
     def get_walks_count_for_node(self, src: NodeId):
         return len(self.__walks.walks_starting_from_node(src))
 
@@ -192,6 +195,9 @@ class IncrementalPageRank:
         assert ego not in counter
         hits = counter[target]
 
+        if hits > 0:
+            assert(nx.has_path(self.__graph, ego, target))
+
         # TODO: normalize the negative hits?
         hits_penalized = hits + self.__neg_hits.get(ego, {}).get(target, 0)
         return hits_penalized / counter.total()
@@ -199,6 +205,9 @@ class IncrementalPageRank:
     def get_ranks(self, ego: NodeId, limit=None):
         # FIXME: optimize out repeated totals, etc.
         counter = self.__personal_hits[ego]
+        for key, value in list(counter.items()):
+            if float(value) == 0.0:
+                counter.pop(key)
         peer_scores = []
         for peer in counter.keys():
             peer_scores.append((peer, self.get_node_score(ego, peer)))
@@ -339,6 +348,7 @@ class IncrementalPageRank:
 
         def zp(s, d, w):
             # Clear penalties resulting from the invalidated walks
+
             invalidated_walks = self.__walks.invalidate_walks_through_node(s)
 
             negs_cache = {}
@@ -350,8 +360,7 @@ class IncrementalPageRank:
                 self.__update_negative_hits(
                     RandomWalk(walk + invalidated_segment), negs,
                     subtract=True)
-
-            if w == 0.0:
+            if float(w) == 0.0:
                 if self.__graph.has_edge(s, d):
                     self.__graph.remove_edge(s, d)
             else:
@@ -361,6 +370,7 @@ class IncrementalPageRank:
             for (walk, invalidated_segment) in invalidated_walks:
                 self.__recalc_invalidated_walk(walk, invalidated_segment)
                 self.__update_negative_hits(walk, negs_cache[walk[0]])
+            pass
 
         def zn(s, d, w):
             self.__graph.add_edge(s, d, weight=w)

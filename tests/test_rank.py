@@ -134,7 +134,7 @@ def test_add_edge_pz(spi):
     # because 2 is still voted up by 1, and 2 gets no more penalties
     # from befriending 0's enemy 3
     spi.add_edge(2, 3, weight=0)
-    assert spi.get_ordered_peers(0) == [2, 1, 3]
+    assert spi.get_ordered_peers(0) == [2, 1]
 
 
 def test_add_edge_pp(spi):
@@ -153,7 +153,7 @@ def test_add_edge_pn(spi):
     # 3 is at least voted by 2, who is valued by 0
     spi.add_edge(0, 1, weight=-1)
     print(spi.get_ranks(0))
-    assert spi.get_ordered_peers(0) == [2, 3, 1]
+    assert spi.get_ordered_peers(0) == [2, 3]
 
 
 def test_add_edge_nz(spi):
