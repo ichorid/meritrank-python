@@ -168,7 +168,8 @@ print(f"Num transitions: {len(transitions_graph.edges())}")
 print(f"Transitions graph strongly connected: "
       f"{nx.is_strongly_connected(transitions_graph)}")
 
-travel_path = traveling_salesman_problem(nx.Graph(transitions_graph))
+travel_path = traveling_salesman_problem(nx.Graph(transitions_graph))[48:]
+travel_path = travel_path[0:6]
 
 edges_taken = set()
 for i in range(len(travel_path)):
@@ -189,8 +190,7 @@ start_graph = merged[sigs[travel_path[0]]]
 ipr = IncrementalPageRank(start_graph)
 ipr.calculate(0)
 
-stepped_results = {}
-stepped_results[sigs[travel_path[0]]] = ipr.get_ranks(0)
+stepped_results = {sigs[travel_path[0]]: ipr.get_ranks(0)}
 for i in range(len(travel_path) - 1):
     current_step = travel_path[i]
     next_step = travel_path[i + 1]

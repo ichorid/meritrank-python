@@ -8,14 +8,14 @@ from _pytest.python_api import approx
 from networkx import scale_free_graph
 
 from meritrank_python.rank import RandomWalk, PosWalk, WalkStorage, \
-    IncrementalPageRank, NodeDoesNotExist
+    IncrementalPageRank, NodeDoesNotExist, SelfReferenceNotAllowed
 
 
 def top_items(d, num_items=3):
     return dict(sorted(d.items(), key=itemgetter(1), reverse=True)[:num_items])
 
 
-def assert_ranking_approx(d1, d2, num_top_items=5, precision=0.2):
+def assert_ranking_approx(d1, d2, num_top_items=5, precision=0.1):
     """
     Compare the first num_items of two ranking dicts with given precision
     """
@@ -91,6 +91,28 @@ def test_update_walk_penalties():
                                                4: -1.0}
 
 
+def test_correct_removal_of_repeated_nodes_in_walk():
+    # If there is a chain of nodes recursively pointing at each other,
+    # there can be walks with repeated nodes, e.g. "abcbcbcbc". For such
+    # walks, special care should be taken to correctly remove from the walks
+    # storage all the references belonging to the nodes from the repeating
+    # section, all the while not screwing up the bookkeeping
+    graph = {0: {1: {'weight': 1}},
+             1: {2: {'weight': 1}, 0: {'weight': 1}},
+             2: {1: {'weight': 1}},
+             }
+    ipr = IncrementalPageRank(graph)
+    ipr.calculate(0)
+    # ACHTUNG! This sequential deletion of edges is here
+    # to check a particularly nasty bug!
+    # DO NOT TRY TO OPTIMIZE THIS TEST!
+    ipr.add_edge(1, 2, weight=0)
+    ipr.add_edge(0, 1, weight=0)
+    # Every connection of 0 to external nodes was deleted, so the resulting
+    # rankings dict should be empty
+    assert ipr.get_ranks(0) == {}
+
+
 def test_pagerank(simple_graph):
     ipr = IncrementalPageRank(simple_graph)
     ipr.calculate(0)
@@ -152,7 +174,6 @@ def test_add_edge_pn(spi):
     # Peculiarly, 3 becomes a better in 0's eyes then 1, because
     # 3 is at least voted by 2, who is valued by 0
     spi.add_edge(0, 1, weight=-1)
-    print(spi.get_ranks(0))
     assert spi.get_ordered_peers(0) == [2, 3]
 
 
@@ -247,6 +268,18 @@ def test_calculate_nonexistent_node(simple_graph):
     with pytest.raises(NodeDoesNotExist):
         ipr1.calculate(0)
 
+def test_forbid_self_reference_edges():
+    graph = {0: {0: {'weight': 1}}}
+    with pytest.raises(SelfReferenceNotAllowed):
+        IncrementalPageRank(graph)
+
+    ipr1 = IncrementalPageRank()
+    with pytest.raises(SelfReferenceNotAllowed):
+        ipr1.add_edge(0,0)
+
+
+
+
 
 def test_pagerank_incremental_from_empty_graph():
     ipr1 = IncrementalPageRank(graph={0: {}})
@@ -257,25 +290,28 @@ def test_pagerank_incremental_from_empty_graph():
 
 def test_pagerank_incremental_big():
     graph = get_scale_free_graph(1000)
+    # Remove self-references - we don't tolerate that
+    for node in graph.nodes():
+        if graph.has_edge(node, node):
+            graph.remove_edge(node,node)
     ipr1 = IncrementalPageRank(graph)
-    ipr1.calculate(0)
-    ranks_simple = ipr1.get_ranks(0)
+    ipr1.calculate(0, num_walks=1000)
 
     ipr2 = IncrementalPageRank(graph={0: {}})
-    ipr2.calculate(0)
+    ipr2.calculate(0, num_walks=1000)
     for edge in graph.edges():
         ipr2.add_edge(edge[0], edge[1], weight=1.0)
-    ranks_incremental = ipr2.get_ranks(0)
+    #assert ipr1.get_ordered_peers(0)[:6] == ipr2.get_ordered_peers(0)[:7]
+    assert_ranking_approx(ipr1.get_ranks(0), ipr2.get_ranks(0))
 
-    assert_ranking_approx(ranks_simple, ranks_incremental)
 
 
 def test_drop_walks():
     s = WalkStorage()
 
     # Add and drop walks from a single node
-    walk0 = RandomWalk([0, 1, 2, 3, 4])
-    walk00 = RandomWalk([0, 2, 3, 4, 1])
+    walk0 = RandomWalk([0, 1, 2, 3, 4, 1])
+    walk00 = RandomWalk([0, 2, 3, 4, 1, 2])
     s.add_walk(walk0)
     s.add_walk(walk00)
     s.drop_walks_from_node(0)
