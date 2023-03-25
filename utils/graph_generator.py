@@ -168,8 +168,8 @@ print(f"Num transitions: {len(transitions_graph.edges())}")
 print(f"Transitions graph strongly connected: "
       f"{nx.is_strongly_connected(transitions_graph)}")
 
-travel_path = traveling_salesman_problem(nx.Graph(transitions_graph))[48:]
-travel_path = travel_path[0:6]
+travel_path = traveling_salesman_problem(nx.Graph(transitions_graph))
+travel_path = travel_path + list(reversed(travel_path))[1:]
 
 edges_taken = set()
 for i in range(len(travel_path)):
@@ -209,6 +209,8 @@ for i in range(len(travel_path) - 1):
     print(calculated_results[sigs[current_step]])
     print(calculated_results[sigs[next_step]])
     print()
+    #assert stepped_results[sigs[next_step]] == approx(calculated_results[sigs[next_step]], 0.2)
+
 
 print(builder.edges)
 

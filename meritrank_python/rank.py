@@ -11,6 +11,8 @@ import networkx as nx
 
 NodeId: TypeAlias = int
 
+ASSERT = True
+
 
 def sign(x: float) -> int:
     if x > 0:
@@ -23,8 +25,10 @@ def sign(x: float) -> int:
 class NodeDoesNotExist(Exception):
     pass
 
+
 class SelfReferenceNotAllowed(Exception):
     pass
+
 
 class RandomWalk(List[NodeId]):
     def __init__(self, *args, **kwargs) -> None:
@@ -93,7 +97,7 @@ class WalkStorage:
                 continue
             # Get existing walks for the node. If there is none,
             # create an empty dictionary for those
-            walks_with_node = self.__walks[node] = self.__walks.get(node, {})
+            walks_with_node = self.__walks.setdefault(node, {})
 
             # Avoid storing the same walk twice in case it visits the node
             # more than once. We're only interested in the first visit,
@@ -126,18 +130,18 @@ class WalkStorage:
             # For every node mentioned in the invalidated subsequence,
             # remove the corresponding entries from the bookkeeping dict
             invalidated_segment = RandomWalk(walk[pos + 1:])
-            for affected_node in invalidated_segment:
-                # if the invalidated node is encountered in the invalidated
-                # subsequence (i.e. there was more than one copy in the
-                # original walk) - don't accidentally remove it, for not to
-                # shoot ourselves in the foot (it still belongs to the
-                # remaining segment).
-                if affected_node == invalidated_node:
-                    continue
-                self.__walks.get(affected_node, {}).pop(uid, None)
 
             # Remove the invalidated subsequence from the walk
             del walk[pos + 1:]
+
+            # !!!ACHTUNG!!!
+            # If a node is encountered in the invalidated
+            # subsequence, but there are still copies of it in the remaining
+            # walk, be sure not to accidentally remove reference to it!
+            for affected_node in set(invalidated_segment).difference(
+                    set(walk)):
+                self.__walks[affected_node].pop(uid)
+
             invalidated_walks.append((walk, invalidated_segment))
         return invalidated_walks
 
@@ -192,18 +196,19 @@ class IncrementalPageRank:
         counter = self.__personal_hits[ego] = Counter()
         for _ in range(0, num_walks):
             walk = self.perform_walk(ego)
-            counter.update(set(walk[1:]))
+            counter.update(set(walk))
             self.__walks.add_walk(walk)
             self.__update_negative_hits(walk, negs)
 
     def get_node_score(self, ego: NodeId, target: NodeId):
         counter = self.__personal_hits[ego]
         # TODO: optimize by caching the result?
-        assert ego not in counter
+        #assert ego not in counter
         hits = counter[target]
 
-        if hits > 0:
-            assert (nx.has_path(self.__graph, ego, target))
+        if ASSERT:
+            if hits > 0 and not nx.has_path(self.__graph, ego, target):
+                assert False
 
         # TODO: normalize the negative hits?
         hits_penalized = hits + self.__neg_hits.get(ego, {}).get(target, 0)
@@ -323,15 +328,18 @@ class IncrementalPageRank:
         # counter for the starting node of the invalidated walk.
         ego = walk[0]
         counter = self.__personal_hits[ego]
-        # !!!ACHTUNG!!! The invalidated fragment may include the node that
-        # became the reason to the invalidation. We must take special care
-        # not to subtract it from the counter by accident!
-        to_remove = set(invalidated_segment)
-        to_remove.discard(walk[-1])
+        # !!!ACHTUNG!!!
+        # The invalidated fragment may include nodes that are
+        # still in the original walk. We must take special care not to
+        # subtract it from the counter by accident!
+        to_remove = set(invalidated_segment).difference(set(walk))
+        # print ("+", counter)
         counter.subtract(to_remove)
-        for c in counter.values():
-            pass
-            assert c >= 0
+        # print ("-", counter)
+        if ASSERT:
+            for c in counter.values():
+                pass
+                assert c >= 0
 
     def __recalc_invalidated_walk(self, walk):
         ego = walk[0]
@@ -342,9 +350,9 @@ class IncrementalPageRank:
         # it stops naturally.
         new_segment_start = len(walk)
         new_segment = self.__generate_walk_segment(walk[-1], stop_node=ego)
+        counter.update(set(new_segment).difference(set(walk)))
         walk.extend(new_segment)
 
-        counter.update(set(new_segment))
         self.__walks.add_walk(walk, start_pos=new_segment_start)
 
     def add_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
@@ -392,7 +400,16 @@ class IncrementalPageRank:
             for (walk, invalidated_segment) in invalidated_walks:
                 self.__clear_invalidated_walk(walk, invalidated_segment)
             pass
+            if ASSERT:
+                for ego, hits in self.__personal_hits.items():
+                    for peer, count in hits.items():
+                        if len(self.__walks.get_walks_through_node(peer)) != count:
+                            assert False
+                        if count > 0 and not nx.has_path(self.__graph, ego,
+                                                         peer):
+                            assert False
 
+            pass
             for (walk, invalidated_segment) in invalidated_walks:
                 self.__recalc_invalidated_walk(walk)
             pass
@@ -400,7 +417,15 @@ class IncrementalPageRank:
             for (walk, invalidated_segment) in invalidated_walks:
                 self.__update_negative_hits(walk, negs_cache[walk[0]])
 
-            pass
+            if ASSERT:
+                for ego, hits in self.__personal_hits.items():
+                    for peer, count in hits.items():
+                        if len(self.__walks.get_walks_through_node(peer)) != count:
+                            assert False
+                        if count > 0 and not nx.has_path(self.__graph, ego,
+                                                         peer):
+                            pass
+                            assert False
 
         def zn(s, d, w):
             self.__graph.add_edge(s, d, weight=w)

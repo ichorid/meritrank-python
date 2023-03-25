@@ -91,7 +91,7 @@ def test_update_walk_penalties():
                                                4: -1.0}
 
 
-def test_correct_removal_of_repeated_nodes_in_walk():
+def test_correct_removal_of_repeating_nodes_in_walk():
     # If there is a chain of nodes recursively pointing at each other,
     # there can be walks with repeated nodes, e.g. "abcbcbcbc". For such
     # walks, special care should be taken to correctly remove from the walks
@@ -111,6 +111,23 @@ def test_correct_removal_of_repeated_nodes_in_walk():
     # Every connection of 0 to external nodes was deleted, so the resulting
     # rankings dict should be empty
     assert ipr.get_ranks(0) == {}
+
+
+def test_correct_removal_of_repeating_nodes2():
+    graph = {0: {2: {'weight': 1}},
+             2: {0: {'weight': 1}, 1: {'weight': 1}},
+             1: {2: {'weight': 1}}}
+    ipr = IncrementalPageRank(graph)
+    ipr.calculate(0)
+    # ACHTUNG! This sequential deletion of edges is here
+    # to check a particularly nasty bug!
+    # DO NOT TRY TO OPTIMIZE THIS TEST!
+    ipr.add_edge(1, 2, 0)
+    ipr.add_edge(1, 0, 1)
+    ipr.add_edge(1, 0, 0)
+    ipr.add_edge(2, 0, 0)
+    ipr.add_edge(2, 1, 0)
+    assert ipr.get_ranks(0) == {2: 1.0}
 
 
 def test_pagerank(simple_graph):
@@ -268,6 +285,7 @@ def test_calculate_nonexistent_node(simple_graph):
     with pytest.raises(NodeDoesNotExist):
         ipr1.calculate(0)
 
+
 def test_forbid_self_reference_edges():
     graph = {0: {0: {'weight': 1}}}
     with pytest.raises(SelfReferenceNotAllowed):
@@ -275,10 +293,7 @@ def test_forbid_self_reference_edges():
 
     ipr1 = IncrementalPageRank()
     with pytest.raises(SelfReferenceNotAllowed):
-        ipr1.add_edge(0,0)
-
-
-
+        ipr1.add_edge(0, 0)
 
 
 def test_pagerank_incremental_from_empty_graph():
@@ -293,7 +308,8 @@ def test_pagerank_incremental_big():
     # Remove self-references - we don't tolerate that
     for node in graph.nodes():
         if graph.has_edge(node, node):
-            graph.remove_edge(node,node)
+            graph.remove_edge(node, node)
+
     ipr1 = IncrementalPageRank(graph)
     ipr1.calculate(0, num_walks=1000)
 
@@ -301,9 +317,8 @@ def test_pagerank_incremental_big():
     ipr2.calculate(0, num_walks=1000)
     for edge in graph.edges():
         ipr2.add_edge(edge[0], edge[1], weight=1.0)
-    #assert ipr1.get_ordered_peers(0)[:6] == ipr2.get_ordered_peers(0)[:7]
-    assert_ranking_approx(ipr1.get_ranks(0), ipr2.get_ranks(0))
-
+    # assert ipr1.get_ordered_peers(0)[:6] == ipr2.get_ordered_peers(0)[:7]
+    assert_ranking_approx(ipr1.get_ranks(0), ipr2.get_ranks(0), precision=0.1)
 
 
 def test_drop_walks():
