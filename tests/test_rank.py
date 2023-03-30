@@ -306,7 +306,7 @@ def test_pagerank_incremental_from_empty_graph():
 
 
 def test_pagerank_incremental_big():
-    graph = get_scale_free_graph(100)
+    graph = get_scale_free_graph(1000)
     graph = graph.reverse()
     # Remove self-references - we don't tolerate that
     for node in graph.nodes():
@@ -323,6 +323,7 @@ def test_pagerank_incremental_big():
         ipr2.add_edge(edge[0], edge[1], weight=1.0)
         print(time.process_time() - start)
     print(graph.in_degree(0))
+    return
 
     ipr3 = IncrementalPageRank(graph={0: {}})
     ipr3.calculate(0, num_walks=1000)

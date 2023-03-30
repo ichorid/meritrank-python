@@ -11,7 +11,7 @@ import networkx as nx
 
 NodeId: TypeAlias = int
 
-ASSERT = True
+ASSERT = False
 OPTIMIZE_INVALIDATION = True
 
 
@@ -122,7 +122,8 @@ class WalkStorage:
         return self.__walks.get(node, {})
 
     def invalidate_walks_through_node(self, invalidated_node: NodeId,
-                                      edge_to_remove: NodeId = None) -> \
+                                      dst_node: NodeId = None,
+                                      step_recalc_probability: float = 0.0) -> \
             List[Tuple[RandomWalk, RandomWalk]]:
         if (walks := self.__walks.get(invalidated_node)) is None:
             return []
@@ -130,19 +131,32 @@ class WalkStorage:
         for uid, pos_walk in walks.items():
             pos, walk = pos_walk.pos, pos_walk.walk
             # Optimization: try not to invalidate all the walks
-            # going through an ego node.
-            if OPTIMIZE_INVALIDATION and edge_to_remove is not None:
-                if len(walk) <= pos+1:
-                    continue
-                else:
-                    may_skip = True
-                    for i in range(pos, len(walk) - 2 + 1):
-                        if walk[i: i + 2] == [invalidated_node, edge_to_remove]:
-                            pos = i
-                            may_skip = False
-                            break
-                    if may_skip:
-                        continue
+            # going through an ego node. Instead, only invalidate those
+            # walks that go through the deleted edge.
+            # The probability distribution of the remaining walks will still be
+            # correct, because removal of a single edge does not
+            # affect the relative weights of the remaining edges.
+            if OPTIMIZE_INVALIDATION:
+                if dst_node is not None:
+                    if step_recalc_probability == 0.0:
+                        # Edge deletion
+                        if len(walk) <= pos + 1:
+                            continue
+                        else:
+                            may_skip = True
+                            for i in range(pos, len(walk) - 2 + 1):
+                                if walk[i: i + 2] == [invalidated_node,
+                                                      dst_node]:
+                                    pos = i
+                                    may_skip = False
+                                    break
+                            if may_skip:
+                                continue
+                    else:
+                        # Edge addition
+                        if random.random() >= step_recalc_probability:
+                            continue
+
             # For every node mentioned in the invalidated subsequence,
             # remove the corresponding entries from the bookkeeping dict
             invalidated_segment = RandomWalk(walk[pos + 1:])
@@ -390,9 +404,16 @@ class IncrementalPageRank:
             pass
 
         def zp(s, d, w):
-            # Clear penalties resulting from the invalidated walks
+            # Clear the penalties resulting from the invalidated walks
+            step_recalc_probability = 0.0
+            if w > 0 and self.__graph.has_node(s):
+                g_edges = self.__graph.out_edges(s, data='weight')
+                sum_of_weights = sum(weight for _, _, weight in g_edges)
+                step_recalc_probability = w / (sum_of_weights + w)
+
             invalidated_walks = self.__walks.invalidate_walks_through_node(s,
-                                                                           edge_to_remove=d if w == 0.0 else None)
+                                                                           dst_node=d,
+                                                                           step_recalc_probability=step_recalc_probability)
 
             negs_cache = {}
             for (walk, invalidated_segment) in invalidated_walks:

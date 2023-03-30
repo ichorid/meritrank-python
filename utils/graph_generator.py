@@ -209,8 +209,7 @@ for i in range(len(travel_path) - 1):
     print(calculated_results[sigs[current_step]])
     print(calculated_results[sigs[next_step]])
     print(flush=True)
-    #assert stepped_results[sigs[next_step]] == approx(calculated_results[sigs[next_step]], 0.3)
-
+    # assert stepped_results[sigs[next_step]] == approx(calculated_results[sigs[next_step]], 0.3)
 
 print(builder.edges)
 
