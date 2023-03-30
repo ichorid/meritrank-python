@@ -12,6 +12,7 @@ import networkx as nx
 NodeId: TypeAlias = int
 
 ASSERT = True
+OPTIMIZE_INVALIDATION = True
 
 
 def sign(x: float) -> int:
@@ -120,13 +121,28 @@ class WalkStorage:
     def get_walks_through_node(self, node: NodeId):
         return self.__walks.get(node, {})
 
-    def invalidate_walks_through_node(self, invalidated_node: NodeId) -> \
+    def invalidate_walks_through_node(self, invalidated_node: NodeId,
+                                      edge_to_remove: NodeId = None) -> \
             List[Tuple[RandomWalk, RandomWalk]]:
         if (walks := self.__walks.get(invalidated_node)) is None:
             return []
         invalidated_walks = []
         for uid, pos_walk in walks.items():
             pos, walk = pos_walk.pos, pos_walk.walk
+            # Optimization: try not to invalidate all the walks
+            # going through an ego node.
+            if OPTIMIZE_INVALIDATION and edge_to_remove is not None:
+                if len(walk) <= pos+1:
+                    continue
+                else:
+                    may_skip = True
+                    for i in range(pos, len(walk) - 2 + 1):
+                        if walk[i: i + 2] == [invalidated_node, edge_to_remove]:
+                            pos = i
+                            may_skip = False
+                            break
+                    if may_skip:
+                        continue
             # For every node mentioned in the invalidated subsequence,
             # remove the corresponding entries from the bookkeeping dict
             invalidated_segment = RandomWalk(walk[pos + 1:])
@@ -203,7 +219,7 @@ class IncrementalPageRank:
     def get_node_score(self, ego: NodeId, target: NodeId):
         counter = self.__personal_hits[ego]
         # TODO: optimize by caching the result?
-        #assert ego not in counter
+        # assert ego not in counter
         hits = counter[target]
 
         if ASSERT:
@@ -333,9 +349,7 @@ class IncrementalPageRank:
         # still in the original walk. We must take special care not to
         # subtract it from the counter by accident!
         to_remove = set(invalidated_segment).difference(set(walk))
-        # print ("+", counter)
         counter.subtract(to_remove)
-        # print ("-", counter)
         if ASSERT:
             for c in counter.values():
                 pass
@@ -377,8 +391,8 @@ class IncrementalPageRank:
 
         def zp(s, d, w):
             # Clear penalties resulting from the invalidated walks
-
-            invalidated_walks = self.__walks.invalidate_walks_through_node(s)
+            invalidated_walks = self.__walks.invalidate_walks_through_node(s,
+                                                                           edge_to_remove=d if w == 0.0 else None)
 
             negs_cache = {}
             for (walk, invalidated_segment) in invalidated_walks:
@@ -403,7 +417,8 @@ class IncrementalPageRank:
             if ASSERT:
                 for ego, hits in self.__personal_hits.items():
                     for peer, count in hits.items():
-                        if len(self.__walks.get_walks_through_node(peer)) != count:
+                        if len(self.__walks.get_walks_through_node(
+                                peer)) != count:
                             assert False
                         if count > 0 and not nx.has_path(self.__graph, ego,
                                                          peer):
@@ -420,7 +435,8 @@ class IncrementalPageRank:
             if ASSERT:
                 for ego, hits in self.__personal_hits.items():
                     for peer, count in hits.items():
-                        if len(self.__walks.get_walks_through_node(peer)) != count:
+                        if len(self.__walks.get_walks_through_node(
+                                peer)) != count:
                             assert False
                         if count > 0 and not nx.has_path(self.__graph, ego,
                                                          peer):

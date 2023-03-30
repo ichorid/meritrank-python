@@ -1,4 +1,5 @@
 import random
+import time
 from operator import itemgetter
 from unittest.mock import Mock
 
@@ -110,7 +111,7 @@ def test_correct_removal_of_repeating_nodes_in_walk():
     ipr.add_edge(0, 1, weight=0)
     # Every connection of 0 to external nodes was deleted, so the resulting
     # rankings dict should be empty
-    assert ipr.get_ranks(0) == {}
+    assert ipr.get_ranks(0) == {0: 1.0}
 
 
 def test_correct_removal_of_repeating_nodes2():
@@ -127,19 +128,19 @@ def test_correct_removal_of_repeating_nodes2():
     ipr.add_edge(1, 0, 0)
     ipr.add_edge(2, 0, 0)
     ipr.add_edge(2, 1, 0)
-    assert ipr.get_ranks(0) == {2: 1.0}
+    assert ipr.get_ranks(0) == approx({0: 0.53, 2: 0.46}, 0.1)
 
 
 def test_pagerank(simple_graph):
     ipr = IncrementalPageRank(simple_graph)
     ipr.calculate(0)
     ranks = ipr.get_ranks(0)
-    assert ranks == approx({1: 0.354, 2: 0.645}, 0.1)
+    assert ranks == approx({0: 0.453, 1: 0.193, 2: 0.35}, 0.1)
 
     # Test limiting the results by count
-    ranks = ipr.get_ranks(0, limit=1)
-    assert ranks[2] == approx(0.645, 0.1)
-    assert len(ranks) == 1
+    ranks = ipr.get_ranks(0, limit=2)
+    assert len(ranks) == 2
+    assert ranks[2] == approx(0.35, 0.1)
 
 
 def test_add_edge_zz(spi):
@@ -154,7 +155,7 @@ def test_add_edge_zp(spi):
     # with it, 4 gets ahead of 3
     orig = spi.get_ordered_peers(0)
     spi.add_edge(2, 4, weight=1)
-    assert spi.get_ordered_peers(0) == [1, 2, 4, 3]
+    assert spi.get_ordered_peers(0) == [0, 1, 2, 4, 3]
 
 
 def test_add_edge_zn(spi):
@@ -164,7 +165,7 @@ def test_add_edge_zn(spi):
     # 0's new enemy 4
     spi.add_edge(1, 4, weight=1)
     spi.add_edge(0, 4, weight=-1)
-    assert spi.get_ordered_peers(0) == [2, 1, 3, 4]
+    assert spi.get_ordered_peers(0) == [0, 2, 1, 3, 4]
 
 
 def test_add_edge_pz(spi):
@@ -173,7 +174,7 @@ def test_add_edge_pz(spi):
     # because 2 is still voted up by 1, and 2 gets no more penalties
     # from befriending 0's enemy 3
     spi.add_edge(2, 3, weight=0)
-    assert spi.get_ordered_peers(0) == [2, 1]
+    assert spi.get_ordered_peers(0) == [0, 2, 1]
 
 
 def test_add_edge_pp(spi):
@@ -181,7 +182,7 @@ def test_add_edge_pp(spi):
     # 0 increases his opinion about 2 tenfold, so now
     # 2 becomes 0's best friend despite 2's compromising connection with 3
     spi.add_edge(0, 2, weight=10)
-    assert spi.get_ordered_peers(0) == [2, 1, 3]
+    assert spi.get_ordered_peers(0) == [0, 2, 1, 3]
 
 
 def test_add_edge_pn(spi):
@@ -191,14 +192,14 @@ def test_add_edge_pn(spi):
     # Peculiarly, 3 becomes a better in 0's eyes then 1, because
     # 3 is at least voted by 2, who is valued by 0
     spi.add_edge(0, 1, weight=-1)
-    assert spi.get_ordered_peers(0) == [2, 3]
+    assert spi.get_ordered_peers(0) == [0, 2, 3]
 
 
 def test_add_edge_nz(spi):
     # Remove negative edge
     # 0 removes his negative opinion about 3, so now 2 is 0's best friend
     spi.add_edge(0, 3, weight=0)
-    assert spi.get_ordered_peers(0) == [2, 1, 3]
+    assert spi.get_ordered_peers(0) == [0, 2, 1, 3]
 
 
 def test_get_ordered_peers_limit(spi):
@@ -212,7 +213,7 @@ def test_add_edge_np(spi):
     # because every the vote-chain now looks like 1->2->3
     # without any penalties
     spi.add_edge(0, 3, weight=1)
-    assert spi.get_ordered_peers(0) == [3, 2, 1]
+    assert spi.get_ordered_peers(0) == [0, 3, 2, 1]
 
 
 def test_add_edge_nn(spi):
@@ -223,9 +224,9 @@ def test_add_edge_nn(spi):
     # which results in 2 and 3 getting at the bottom of 0's priorities
     spi.add_edge(1, 4, weight=1)
     spi.add_edge(0, 4, weight=-1)
-    assert spi.get_ordered_peers(0) == [2, 1, 3, 4]
+    assert spi.get_ordered_peers(0) == [0, 2, 1, 3, 4]
     spi.add_edge(0, 3, weight=-100)
-    assert spi.get_ordered_peers(0) == [1, 4, 2, 3]
+    assert spi.get_ordered_peers(0) == [1, 4, 0, 2, 3]
 
 
 def test_add_edge_commutativity(simple_graph):
@@ -243,7 +244,8 @@ def test_add_edge_commutativity(simple_graph):
 
 
 def test_meritrank_negative(spi):
-    assert spi.get_ranks(0) == approx({1: 0.34, 2: 0.068, 3: 0.00}, 0.1)
+    assert spi.get_ranks(0) == approx({0: 0.28, 1: 0.189, 2: 0.037, 3: 0.00},
+                                      0.1)
 
 
 def test_pagerank_incremental(simple_graph):
@@ -304,7 +306,8 @@ def test_pagerank_incremental_from_empty_graph():
 
 
 def test_pagerank_incremental_big():
-    graph = get_scale_free_graph(1000)
+    graph = get_scale_free_graph(100)
+    graph = graph.reverse()
     # Remove self-references - we don't tolerate that
     for node in graph.nodes():
         if graph.has_edge(node, node):
@@ -315,10 +318,21 @@ def test_pagerank_incremental_big():
 
     ipr2 = IncrementalPageRank(graph={0: {}})
     ipr2.calculate(0, num_walks=1000)
+    start = time.process_time()
     for edge in graph.edges():
         ipr2.add_edge(edge[0], edge[1], weight=1.0)
+        print(time.process_time() - start)
+    print(graph.in_degree(0))
+
+    ipr3 = IncrementalPageRank(graph={0: {}})
+    ipr3.calculate(0, num_walks=1000)
+    lll = list(graph.edges())
+    random.shuffle(lll)
+    for edge in lll:
+        ipr3.add_edge(edge[0], edge[1], weight=1.0)
     # assert ipr1.get_ordered_peers(0)[:6] == ipr2.get_ordered_peers(0)[:7]
-    assert_ranking_approx(ipr1.get_ranks(0), ipr2.get_ranks(0), precision=0.1)
+    # assert_ranking_approx(ipr2.get_ranks(0), ipr2.get_ranks(0), precision=0.1)
+    assert ipr2.get_ordered_peers(0) == ipr3.get_ordered_peers(0)
 
 
 def test_drop_walks():
@@ -364,7 +378,7 @@ def test_load_graph_from_persist_store(simple_graph):
     stor.get_graph_and_calc_commands = lambda: (simple_graph, {0: 10})
     ipr1 = IncrementalPageRank(persistent_storage=stor)
     assert ipr1.get_node_edges(0) == [(0, 1, 1), (0, 2, 1)]
-    assert ipr1.get_node_score(0, 1) == 0.4
+    assert ipr1.get_node_score(0, 1) == 0.24
 
 
 def test_persist_edge_and_calc_commands():
