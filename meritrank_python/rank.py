@@ -11,7 +11,7 @@ import networkx as nx
 
 NodeId: TypeAlias = int
 
-ASSERT = False
+ASSERT = True
 OPTIMIZE_INVALIDATION = True
 
 
@@ -167,7 +167,7 @@ class WalkStorage:
             # !!!ACHTUNG!!!
             # If a node is encountered in the invalidated
             # subsequence, but there are still copies of it in the remaining
-            # walk, be sure not to accidentally remove reference to it!
+            # walk, be sure not to accidentally remove any references to it!
             for affected_node in set(invalidated_segment).difference(
                     set(walk)):
                 self.__walks[affected_node].pop(uid)
@@ -369,7 +369,8 @@ class IncrementalPageRank:
                 pass
                 assert c >= 0
 
-    def __recalc_invalidated_walk(self, walk):
+    def __recalc_invalidated_walk(self, walk: RandomWalk,
+                                  force_first_step: NodeId = None):
         ego = walk[0]
         counter = self.__personal_hits[ego]
 
@@ -377,7 +378,17 @@ class IncrementalPageRank:
         # walks allows us to complete a walk by just continuing it until
         # it stops naturally.
         new_segment_start = len(walk)
-        new_segment = self.__generate_walk_segment(walk[-1], stop_node=ego)
+        first_step = force_first_step or walk[-1]
+        if force_first_step:
+            # Extra care must be taken not to bias the distribution
+            # by adding the first step without re-sampling the probability
+            # for stopping the walk.
+            if random.random() >= self.alpha or force_first_step == ego:
+                return
+        new_segment = self.__generate_walk_segment(first_step, stop_node=ego)
+        # FIXME: stop on ego step?
+        if force_first_step:
+            new_segment.insert(0, first_step)
         counter.update(set(new_segment).difference(set(walk)))
         walk.extend(new_segment)
 
@@ -406,7 +417,7 @@ class IncrementalPageRank:
         def zp(s, d, w):
             # Clear the penalties resulting from the invalidated walks
             step_recalc_probability = 0.0
-            if w > 0 and self.__graph.has_node(s):
+            if OPTIMIZE_INVALIDATION and w > 0 and self.__graph.has_node(s):
                 g_edges = self.__graph.out_edges(s, data='weight')
                 sum_of_weights = sum(weight for _, _, weight in g_edges)
                 step_recalc_probability = w / (sum_of_weights + w)
@@ -447,7 +458,10 @@ class IncrementalPageRank:
 
             pass
             for (walk, invalidated_segment) in invalidated_walks:
-                self.__recalc_invalidated_walk(walk)
+                self.__recalc_invalidated_walk(
+                    walk,
+                    force_first_step=d if step_recalc_probability > 0.0 else None
+                )
             pass
 
             for (walk, invalidated_segment) in invalidated_walks:
