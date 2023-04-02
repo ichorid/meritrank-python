@@ -142,7 +142,7 @@ class TestGraphListBuilder:
         return output
 
 
-builder = TestGraphListBuilder(4)
+builder = TestGraphListBuilder(3)
 perms = builder.generate_weights_permutations()
 perms_filtered = builder.remove_unconnected_to_ego(
     builder.remove_nonego_negs(perms))
@@ -210,7 +210,7 @@ for i in range(len(travel_path) - 1):
     print(stepped_results[sigs[next_step]])
     print(calculated_results[sigs[next_step]])
     print(flush=True)
-    # assert stepped_results[sigs[next_step]] == approx(calculated_results[sigs[next_step]], 0.3)
+    assert stepped_results[sigs[next_step]] == approx(calculated_results[sigs[next_step]], 0.1)
 
 print(builder.edges)
 

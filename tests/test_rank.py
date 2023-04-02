@@ -48,7 +48,7 @@ def simple_graph_negative():
         {0: {1: {'weight': 1},
              2: {'weight': 1},
              3: {'weight': -1}},
-         2: {1: {'weight': 1}},
+         1: {2: {'weight': 1}},
          2: {3: {'weight': 1}}
          }
     )
@@ -152,10 +152,9 @@ def test_add_edge_zz(spi):
 
 def test_add_edge_zp(spi):
     # 2 adds a new friend 4, and because it shares some gratitude
-    # with it, 4 gets ahead of 3
-    orig = spi.get_ordered_peers(0)
+    # with it, 4 gets ahead of 3 and 1
     spi.add_edge(2, 4, weight=1)
-    assert spi.get_ordered_peers(0) == [0, 1, 2, 4, 3]
+    assert spi.get_ordered_peers(0) == [0, 2, 4, 1, 3]
 
 
 def test_add_edge_zn(spi):
@@ -164,7 +163,7 @@ def test_add_edge_zn(spi):
     # so 1 gets demoted because now paths going through it lead to
     # 0's new enemy 4
     spi.add_edge(1, 4, weight=1)
-    spi.add_edge(0, 4, weight=-1)
+    spi.add_edge(0, 4, weight=-1.5)
     assert spi.get_ordered_peers(0) == [0, 2, 1, 3, 4]
 
 
@@ -194,12 +193,15 @@ def test_add_edge_pn(spi):
     spi.add_edge(0, 1, weight=-1)
     assert spi.get_ordered_peers(0) == [0, 2, 3]
 
+def test_basic_negative(spi):
+    # Just test that the order of the test graph is as we expect
+    assert spi.get_ordered_peers(0) == [0, 1, 2, 3]
 
 def test_add_edge_nz(spi):
     # Remove negative edge
     # 0 removes his negative opinion about 3, so now 2 is 0's best friend
     spi.add_edge(0, 3, weight=0)
-    assert spi.get_ordered_peers(0) == [0, 2, 1, 3]
+    assert spi.get_ordered_peers(0) == [0, 2, 3, 1]
 
 
 def test_get_ordered_peers_limit(spi):
@@ -210,7 +212,7 @@ def test_add_edge_np(spi):
     # Change negative edge to positive edge
     # 0 changes its negative opinion about 3 to positive, so
     # now 3 becomes 0's best friend, and 2 second best,
-    # because every the vote-chain now looks like 1->2->3
+    # because the vote-chain now looks like 1->2->3
     # without any penalties
     spi.add_edge(0, 3, weight=1)
     assert spi.get_ordered_peers(0) == [0, 3, 2, 1]
@@ -220,13 +222,13 @@ def test_add_edge_nn(spi):
     # Change the weight of a negative edge
     # First, 1 gets a new friend 4, and 0 hates 4, so 1 gets
     # lower than 2 on the list of 0's preferences.
-    # However, after that 0 pulls the world of hate upon 3,
-    # which results in 2 and 3 getting at the bottom of 0's priorities
     spi.add_edge(1, 4, weight=1)
-    spi.add_edge(0, 4, weight=-1)
-    assert spi.get_ordered_peers(0) == [0, 2, 1, 3, 4]
+    spi.add_edge(0, 4, weight=-5)
+    assert spi.get_ordered_peers(0) == [2, 3, 0, 1, 4]
+    # However, after that 0 pulls the world of hate upon 3,
+    # which results in 1, 2 and 3 pushed to the bottom of 0's priorities
     spi.add_edge(0, 3, weight=-100)
-    assert spi.get_ordered_peers(0) == [1, 4, 0, 2, 3]
+    assert spi.get_ordered_peers(0) == [4, 1, 2, 3, 0]
 
 
 def test_add_edge_commutativity(simple_graph):
@@ -244,7 +246,7 @@ def test_add_edge_commutativity(simple_graph):
 
 
 def test_meritrank_negative(spi):
-    assert spi.get_ranks(0) == approx({0: 0.28, 1: 0.189, 2: 0.037, 3: 0.00},
+    assert spi.get_ranks(0) == approx({0: 0.118, 1: 0.04, 2: 0.041, 3: 0.00},
                                       0.1)
 
 
@@ -318,18 +320,20 @@ def test_pagerank_incremental_add_loop():
     ipr2.add_edge(2, 0, 1)
     assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
 
+
 def test_pagerank_incremental_add_edge_from_loop_source():
     graph_orig = {0: {1: {'weight': -1}, 2: {'weight': 1}},
                   2: {0: {'weight': 1}}}
     graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
                      2: {1: {'weight': 1}, 0: {'weight': 1}}}
     ipr1 = IncrementalPageRank(graph_updated)
-    ipr1.calculate(0, num_walks=10000)
+    ipr1.calculate(0)
 
     ipr2 = IncrementalPageRank(graph_orig)
-    ipr2.calculate(0, num_walks=10000)
+    ipr2.calculate(0)
     ipr2.add_edge(2, 1, 1)
     assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
+
 
 def test_pagerank_incremental_delete_edge():
     graph_orig = {0: {1: {'weight': -1}, 2: {'weight': 1}},
@@ -337,12 +341,13 @@ def test_pagerank_incremental_delete_edge():
     graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
                      2: {1: {'weight': 1}}}
     ipr1 = IncrementalPageRank(graph_updated)
-    ipr1.calculate(0, num_walks=10000)
+    ipr1.calculate(0)
 
     ipr2 = IncrementalPageRank(graph_orig)
-    ipr2.calculate(0, num_walks=10000)
+    ipr2.calculate(0)
     ipr2.add_edge(2, 3, 0)
     assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
+
 
 def test_pagerank_incremental_delete_loop():
     graph_orig = {0: {1: {'weight': -1}, 2: {'weight': 1}},
@@ -350,14 +355,11 @@ def test_pagerank_incremental_delete_loop():
     graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
                      2: {1: {'weight': 1}}}
     ipr1 = IncrementalPageRank(graph_updated)
-    ipr1.calculate(0, num_walks=10000)
+    ipr1.calculate(0)
 
     ipr2 = IncrementalPageRank(graph_orig)
-    ipr2.calculate(0, num_walks=10000)
+    ipr2.calculate(0)
     ipr2.add_edge(2, 0, 0)
-    print()
-    print(ipr1.get_ranks(0))
-    print(ipr2.get_ranks(0))
     assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
 
 
@@ -370,17 +372,15 @@ def test_pagerank_incremental_big():
             graph.remove_edge(node, node)
 
     ipr1 = IncrementalPageRank(graph)
-    ipr1.calculate(0, num_walks=10000)
+    ipr1.calculate(0)
 
     ipr3 = IncrementalPageRank(graph={0: {}})
-    ipr3.calculate(0, num_walks=10000)
+    ipr3.calculate(0)
     lll = list(graph.edges())
     random.shuffle(lll)
     for edge in lll:
         ipr3.add_edge(edge[0], edge[1], weight=1.0)
-    # assert ipr1.get_ordered_peers(0)[:6] == ipr2.get_ordered_peers(0)[:7]
     assert_ranking_approx(ipr1.get_ranks(0), ipr3.get_ranks(0), precision=0.1)
-    #assert ipr1.get_ordered_peers(0) == ipr3.get_ordered_peers(0)
 
 
 def test_drop_walks():

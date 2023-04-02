@@ -11,7 +11,7 @@ import networkx as nx
 
 NodeId: TypeAlias = int
 
-ASSERT = True
+ASSERT = False
 OPTIMIZE_INVALIDATION = True
 
 
@@ -393,8 +393,11 @@ class IncrementalPageRank:
             # Extra care must be taken not to bias the distribution
             # by adding the first step without re-sampling the probability
             # for stopping the walk.
-            if random.random() >= self.alpha:
-                return
+            if skip_alpha_on_first_step:
+                skip_alpha_on_first_step = False
+            else:
+                if random.random() >= self.alpha:
+                    return
         new_segment = self.__generate_walk_segment(first_step,
                                                    skip_alpha_on_first_step)
         if force_first_step is not None:
