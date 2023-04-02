@@ -305,6 +305,62 @@ def test_pagerank_incremental_from_empty_graph():
     ipr1.add_edge(0, 2, weight=1.0)
 
 
+def test_pagerank_incremental_add_loop():
+    graph_orig = {0: {1: {'weight': -1}, 2: {'weight': 1}},
+                  2: {1: {'weight': 1}}}
+    graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
+                     2: {1: {'weight': 1}, 0: {'weight': 1}}}
+    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1.calculate(0)
+
+    ipr2 = IncrementalPageRank(graph_orig)
+    ipr2.calculate(0)
+    ipr2.add_edge(2, 0, 1)
+    assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
+
+def test_pagerank_incremental_add_edge_from_loop_source():
+    graph_orig = {0: {1: {'weight': -1}, 2: {'weight': 1}},
+                  2: {0: {'weight': 1}}}
+    graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
+                     2: {1: {'weight': 1}, 0: {'weight': 1}}}
+    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1.calculate(0, num_walks=10000)
+
+    ipr2 = IncrementalPageRank(graph_orig)
+    ipr2.calculate(0, num_walks=10000)
+    ipr2.add_edge(2, 1, 1)
+    assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
+
+def test_pagerank_incremental_delete_edge():
+    graph_orig = {0: {1: {'weight': -1}, 2: {'weight': 1}},
+                  2: {3: {'weight': 1}, 1: {'weight': 1}}}
+    graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
+                     2: {1: {'weight': 1}}}
+    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1.calculate(0, num_walks=10000)
+
+    ipr2 = IncrementalPageRank(graph_orig)
+    ipr2.calculate(0, num_walks=10000)
+    ipr2.add_edge(2, 3, 0)
+    assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
+
+def test_pagerank_incremental_delete_loop():
+    graph_orig = {0: {1: {'weight': -1}, 2: {'weight': 1}},
+                  2: {0: {'weight': 1}, 1: {'weight': 1}}}
+    graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
+                     2: {1: {'weight': 1}}}
+    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1.calculate(0, num_walks=10000)
+
+    ipr2 = IncrementalPageRank(graph_orig)
+    ipr2.calculate(0, num_walks=10000)
+    ipr2.add_edge(2, 0, 0)
+    print()
+    print(ipr1.get_ranks(0))
+    print(ipr2.get_ranks(0))
+    assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
+
+
 def test_pagerank_incremental_big():
     graph = get_scale_free_graph(1000)
     graph = graph.reverse()
@@ -314,26 +370,17 @@ def test_pagerank_incremental_big():
             graph.remove_edge(node, node)
 
     ipr1 = IncrementalPageRank(graph)
-    ipr1.calculate(0, num_walks=1000)
-
-    ipr2 = IncrementalPageRank(graph={0: {}})
-    ipr2.calculate(0, num_walks=1000)
-    start = time.process_time()
-    for edge in graph.edges():
-        ipr2.add_edge(edge[0], edge[1], weight=1.0)
-        print(time.process_time() - start)
-    print(graph.in_degree(0))
-    return
+    ipr1.calculate(0, num_walks=10000)
 
     ipr3 = IncrementalPageRank(graph={0: {}})
-    ipr3.calculate(0, num_walks=1000)
+    ipr3.calculate(0, num_walks=10000)
     lll = list(graph.edges())
     random.shuffle(lll)
     for edge in lll:
         ipr3.add_edge(edge[0], edge[1], weight=1.0)
     # assert ipr1.get_ordered_peers(0)[:6] == ipr2.get_ordered_peers(0)[:7]
-    # assert_ranking_approx(ipr2.get_ranks(0), ipr2.get_ranks(0), precision=0.1)
-    assert ipr2.get_ordered_peers(0) == ipr3.get_ordered_peers(0)
+    assert_ranking_approx(ipr1.get_ranks(0), ipr3.get_ranks(0), precision=0.1)
+    #assert ipr1.get_ordered_peers(0) == ipr3.get_ordered_peers(0)
 
 
 def test_drop_walks():

@@ -87,7 +87,7 @@ class WalkStorage:
     def __init__(self) -> None:
         self.__walks: Dict[NodeId, Dict[uuid.UUID, PosWalk]] = {}
 
-    def walks_starting_from_node(self, src: NodeId) -> list[RandomWalk]:
+    def get_walks_starting_from_node(self, src: NodeId) -> list[RandomWalk]:
         """ Returns the walks starting from the given node"""
         return [pos_walk.walk for pos_walk in
                 self.__walks.get(src, {}).values() if pos_walk.pos == 0]
@@ -112,7 +112,7 @@ class WalkStorage:
             walks_with_node[walk.uuid] = PosWalk(pos, walk)
 
     def drop_walks_from_node(self, node: NodeId):
-        for walk in self.walks_starting_from_node(node):
+        for walk in self.get_walks_starting_from_node(node):
             for affected_node in walk:
                 if self.__walks[affected_node].get(walk.uuid):
                     del self.__walks[affected_node][walk.uuid]
@@ -123,7 +123,8 @@ class WalkStorage:
 
     def invalidate_walks_through_node(self, invalidated_node: NodeId,
                                       dst_node: NodeId = None,
-                                      step_recalc_probability: float = 0.0) -> \
+                                      step_recalc_probability: float = 0.0,
+                                      alpha=None) -> \
             List[Tuple[RandomWalk, RandomWalk]]:
         if (walks := self.__walks.get(invalidated_node)) is None:
             return []
@@ -140,21 +141,30 @@ class WalkStorage:
                 if dst_node is not None:
                     if step_recalc_probability == 0.0:
                         # Edge deletion
-                        if len(walk) <= pos + 1:
-                            continue
-                        else:
+                        assert len(walk) > pos
+                        may_skip = True
+                        if pos == len(walk) - 1:
                             may_skip = True
+                        else:
                             for i in range(pos, len(walk) - 2 + 1):
                                 if walk[i: i + 2] == [invalidated_node,
                                                       dst_node]:
                                     pos = i
                                     may_skip = False
                                     break
-                            if may_skip:
-                                continue
+                        if may_skip:
+                            continue
                     else:
                         # Edge addition
-                        if random.random() >= step_recalc_probability:
+                        may_skip = True
+                        for i in range(pos, len(walk)):
+                            if walk[i] == invalidated_node:
+                                pos = i
+                                if random.random() <= step_recalc_probability:
+                                    may_skip = False
+                                    break
+
+                        if may_skip:
                             continue
 
             # For every node mentioned in the invalidated subsequence,
@@ -205,9 +215,9 @@ class IncrementalPageRank:
         return nx.to_dict_of_dicts(self.__graph)
 
     def get_walks_count_for_node(self, src: NodeId):
-        return len(self.__walks.walks_starting_from_node(src))
+        return len(self.__walks.get_walks_starting_from_node(src))
 
-    def calculate(self, ego: NodeId, num_walks: int = 1000):
+    def calculate(self, ego: NodeId, num_walks: int = 10000):
         """
         Calculate the PageRank from the perspective of the given node.
         If there are already walks for the node, drop them and calculate anew.
@@ -265,8 +275,7 @@ class IncrementalPageRank:
 
     def perform_walk(self, start_node: NodeId) -> RandomWalk:
         walk = RandomWalk([start_node])
-        new_segment = self.__generate_walk_segment(
-            start_node, stop_node=start_node)
+        new_segment = self.__generate_walk_segment(start_node)
         walk.extend(new_segment)
         return walk
 
@@ -283,15 +292,14 @@ class IncrementalPageRank:
         return neighbours
 
     def __generate_walk_segment(self, start_node: NodeId,
-                                stop_node: NodeId) -> RandomWalk:
+                                skip_alpha_on_first_step=False) -> RandomWalk:
         node = start_node
         walk = RandomWalk()
         while ((neighbours := self.__neighbours_weighted(node))
-               and random.random() <= self.alpha):
+               and (skip_alpha_on_first_step or random.random() <= self.alpha)):
+            skip_alpha_on_first_step = False
             peers, weights = zip(*neighbours.items())
             next_step = random.choices(peers, weights=weights, k=1)[0]
-            if next_step == stop_node:
-                break
             walk.append(next_step)
             node = next_step
         return walk
@@ -370,7 +378,8 @@ class IncrementalPageRank:
                 assert c >= 0
 
     def __recalc_invalidated_walk(self, walk: RandomWalk,
-                                  force_first_step: NodeId = None):
+                                  force_first_step: NodeId = None,
+                                  skip_alpha_on_first_step=False):
         ego = walk[0]
         counter = self.__personal_hits[ego]
 
@@ -378,16 +387,17 @@ class IncrementalPageRank:
         # walks allows us to complete a walk by just continuing it until
         # it stops naturally.
         new_segment_start = len(walk)
-        first_step = force_first_step or walk[-1]
-        if force_first_step:
+        first_step = force_first_step if force_first_step is not None else \
+        walk[-1]
+        if force_first_step is not None:
             # Extra care must be taken not to bias the distribution
             # by adding the first step without re-sampling the probability
             # for stopping the walk.
-            if random.random() >= self.alpha or force_first_step == ego:
+            if random.random() >= self.alpha:
                 return
-        new_segment = self.__generate_walk_segment(first_step, stop_node=ego)
-        # FIXME: stop on ego step?
-        if force_first_step:
+        new_segment = self.__generate_walk_segment(first_step,
+                                                   skip_alpha_on_first_step)
+        if force_first_step is not None:
             new_segment.insert(0, first_step)
         counter.update(set(new_segment).difference(set(walk)))
         walk.extend(new_segment)
@@ -417,14 +427,15 @@ class IncrementalPageRank:
         def zp(s, d, w):
             # Clear the penalties resulting from the invalidated walks
             step_recalc_probability = 0.0
-            if OPTIMIZE_INVALIDATION and w > 0 and self.__graph.has_node(s):
-                g_edges = self.__graph.out_edges(s, data='weight')
-                sum_of_weights = sum(weight for _, _, weight in g_edges)
+            if OPTIMIZE_INVALIDATION and w > 0.0 and self.__graph.has_node(s):
+                g_edges = self.__neighbours_weighted(s)
+                sum_of_weights = sum(weight for weight in g_edges.values())
                 step_recalc_probability = w / (sum_of_weights + w)
 
             invalidated_walks = self.__walks.invalidate_walks_through_node(s,
                                                                            dst_node=d,
-                                                                           step_recalc_probability=step_recalc_probability)
+                                                                           step_recalc_probability=step_recalc_probability,
+                                                                           alpha=self.alpha)
 
             negs_cache = {}
             for (walk, invalidated_segment) in invalidated_walks:
@@ -460,7 +471,8 @@ class IncrementalPageRank:
             for (walk, invalidated_segment) in invalidated_walks:
                 self.__recalc_invalidated_walk(
                     walk,
-                    force_first_step=d if step_recalc_probability > 0.0 else None
+                    force_first_step=d if step_recalc_probability > 0.0 else None,
+                    skip_alpha_on_first_step=OPTIMIZE_INVALIDATION and (w == 0.0)
                 )
             pass
 

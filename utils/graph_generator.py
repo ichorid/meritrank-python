@@ -185,6 +185,7 @@ for sig, graph in merged.items():
     ipr.calculate(0)
     # print(sig, ipr.get_ranks(0))
     calculated_results[sig] = ipr.get_ranks(0)
+    pass
 
 start_graph = merged[sigs[travel_path[0]]]
 ipr = IncrementalPageRank(start_graph)
@@ -205,8 +206,8 @@ for i in range(len(travel_path) - 1):
     print(orig_graph)
     print(ipr.get_graph())
     print(orig_results)
-    print(stepped_results[sigs[next_step]])
     print(calculated_results[sigs[current_step]])
+    print(stepped_results[sigs[next_step]])
     print(calculated_results[sigs[next_step]])
     print(flush=True)
     # assert stepped_results[sigs[next_step]] == approx(calculated_results[sigs[next_step]], 0.3)
