@@ -5,7 +5,7 @@ Copyright: Vadim Bulavintsev (GPL v2)
 This repository contains the Python implementation for the incremental version of the MeritRank 
 scoring system (which is inspired by personalized PageRank). The implementation is broken down into several modules,
 namely:
-* `meritrank_python.rank`: incremental PageRank with in-memory data structures
+* `meritrank_python.rank`: incremental MeritRank with in-memory data structures
 * `meritrank_python.disk_persistence`: and `mdb`-based persistence layer for storing the rank state on disk
 * `meritrank_python.asgi`: a FastAPI-based API for the ranking system (persists data to disk by default)
 
@@ -24,9 +24,9 @@ into `meritrank_graph.dbm` in the working dir (the repo dir).
 
 ## Usage example
 ```python
-from meritrank_python.rank import IncrementalPageRank
+from meritrank_python.rank import IncrementalMeritRank
 
-pr = IncrementalPageRank()
+pr = IncrementalMeritRank()
 
 pr.add_edge(0, 1, )
 pr.add_edge(0, 2, weight=0.5)
@@ -48,7 +48,7 @@ print(pr.get_node_score(0, 1))
 The basic usage is covered in the test suite. 
 To run the FastAPI-based ASGI implementation:
 ```commandline
-poetry install
+poetry install -G asgi
 poetry shell
 uvicorn meritrank_python.asgi:create_meritrank_app --reload --factory
 ```
@@ -58,12 +58,14 @@ and experiment with the API in-browser. Note the basic run options will persist 
 database on disk 
 
 ## Known issues and limitations
-* Currently, the only implemented algorithm is incremental personal PageRank. 
 * The `NodeID` type is `int` - should be changed to something more general, e.g. `bytes`
-* No security/authorization
+* No security/authorization with ASGI
+* The bookkeeping algorithm for the incremental 
+addition-deletion of edges is pretty complex.  
+Initial tests show its results are equivalent to non-incremental version,
+at least for all possible transitions between all possible meaningful 3- and 4-nodes graphs.
+Nonetheless, it is hard to predict how the thing will work in real-life scenarios.
 
 ##
-* The next step should be implementing other types of ranks (MeritRank, Personal Hitting Time)
-and enable them in as dependency injections.
-* After that, we should add some networking layer, e.g. IPv8
+* The next step in development should be adding some type of networking layer for gossip
 * At that point, we should add security in the form of signature verification
