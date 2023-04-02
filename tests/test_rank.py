@@ -1,5 +1,4 @@
 import random
-import time
 from operator import itemgetter
 from unittest.mock import Mock
 

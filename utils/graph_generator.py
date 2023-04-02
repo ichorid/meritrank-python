@@ -1,6 +1,4 @@
-from collections import Counter
 from itertools import permutations
-from pprint import pprint
 
 import networkx as nx
 from _pytest.python_api import approx
