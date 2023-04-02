@@ -9,7 +9,7 @@ from _pytest.python_api import approx
 from networkx import scale_free_graph
 
 from meritrank_python.rank import RandomWalk, PosWalk, WalkStorage, \
-    IncrementalPageRank, NodeDoesNotExist, SelfReferenceNotAllowed
+    IncrementalMeritRank, NodeDoesNotExist, SelfReferenceNotAllowed
 
 
 def top_items(d, num_items=3):
@@ -56,7 +56,7 @@ def simple_graph_negative():
 
 @pytest.fixture
 def spi(simple_graph_negative):
-    ipr = IncrementalPageRank(simple_graph_negative)
+    ipr = IncrementalMeritRank(simple_graph_negative)
     ipr.calculate(0)
     return ipr
 
@@ -102,7 +102,7 @@ def test_correct_removal_of_repeating_nodes_in_walk():
              1: {2: {'weight': 1}, 0: {'weight': 1}},
              2: {1: {'weight': 1}},
              }
-    ipr = IncrementalPageRank(graph)
+    ipr = IncrementalMeritRank(graph)
     ipr.calculate(0)
     # ACHTUNG! This sequential deletion of edges is here
     # to check a particularly nasty bug!
@@ -118,7 +118,7 @@ def test_correct_removal_of_repeating_nodes2():
     graph = {0: {2: {'weight': 1}},
              2: {0: {'weight': 1}, 1: {'weight': 1}},
              1: {2: {'weight': 1}}}
-    ipr = IncrementalPageRank(graph)
+    ipr = IncrementalMeritRank(graph)
     ipr.calculate(0)
     # ACHTUNG! This sequential deletion of edges is here
     # to check a particularly nasty bug!
@@ -132,7 +132,7 @@ def test_correct_removal_of_repeating_nodes2():
 
 
 def test_pagerank(simple_graph):
-    ipr = IncrementalPageRank(simple_graph)
+    ipr = IncrementalMeritRank(simple_graph)
     ipr.calculate(0)
     ranks = ipr.get_ranks(0)
     assert ranks == approx({0: 0.453, 1: 0.193, 2: 0.35}, 0.1)
@@ -232,12 +232,12 @@ def test_add_edge_nn(spi):
 
 
 def test_add_edge_commutativity(simple_graph):
-    ipr1 = IncrementalPageRank(simple_graph)
+    ipr1 = IncrementalMeritRank(simple_graph)
     ipr1.calculate(0)
     ipr1.add_edge(0, 3, weight=-1)
     ipr1.add_edge(1, 3, weight=1)
 
-    ipr2 = IncrementalPageRank(simple_graph)
+    ipr2 = IncrementalMeritRank(simple_graph)
     ipr2.calculate(0)
     ipr2.add_edge(1, 3, weight=1)
     ipr2.add_edge(0, 3, weight=-1)
@@ -252,11 +252,11 @@ def test_meritrank_negative(spi):
 
 def test_pagerank_incremental(simple_graph):
     orig_graph = {2: {3: {"weight": 1.0}}} | simple_graph
-    ipr1 = IncrementalPageRank(orig_graph)
+    ipr1 = IncrementalMeritRank(orig_graph)
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
 
-    ipr2 = IncrementalPageRank(simple_graph)
+    ipr2 = IncrementalMeritRank(simple_graph)
     ipr2.calculate(0)
     ipr2.add_edge(2, 3)
     ranks_incremental = ipr2.get_ranks(0)
@@ -265,18 +265,18 @@ def test_pagerank_incremental(simple_graph):
 
 
 def test_get_node_edges(simple_graph):
-    ipr1 = IncrementalPageRank(simple_graph)
+    ipr1 = IncrementalMeritRank(simple_graph)
     assert ipr1.get_node_edges(0) == [(0, 1, 1), (0, 2, 1)]
 
 
 def test_pagerank_incremental_basic():
     graph = {0: {1: {'weight': 1}}}
     graph_updated = {0: {1: {'weight': 1}, 2: {'weight': 1}}}
-    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1 = IncrementalMeritRank(graph_updated)
     ipr1.calculate(0)
     ranks_simple = ipr1.get_ranks(0)
 
-    ipr2 = IncrementalPageRank(graph)
+    ipr2 = IncrementalMeritRank(graph)
     ipr2.calculate(0)
     ipr2.add_edge(0, 2)
     ranks_incremental = ipr2.get_ranks(0)
@@ -285,7 +285,7 @@ def test_pagerank_incremental_basic():
 
 
 def test_calculate_nonexistent_node(simple_graph):
-    ipr1 = IncrementalPageRank()
+    ipr1 = IncrementalMeritRank()
     with pytest.raises(NodeDoesNotExist):
         ipr1.calculate(0)
 
@@ -293,15 +293,15 @@ def test_calculate_nonexistent_node(simple_graph):
 def test_forbid_self_reference_edges():
     graph = {0: {0: {'weight': 1}}}
     with pytest.raises(SelfReferenceNotAllowed):
-        IncrementalPageRank(graph)
+        IncrementalMeritRank(graph)
 
-    ipr1 = IncrementalPageRank()
+    ipr1 = IncrementalMeritRank()
     with pytest.raises(SelfReferenceNotAllowed):
         ipr1.add_edge(0, 0)
 
 
 def test_pagerank_incremental_from_empty_graph():
-    ipr1 = IncrementalPageRank(graph={0: {}})
+    ipr1 = IncrementalMeritRank(graph={0: {}})
     ipr1.calculate(0)
     ipr1.add_edge(0, 1, weight=1.0)
     ipr1.add_edge(0, 2, weight=1.0)
@@ -312,10 +312,10 @@ def test_pagerank_incremental_add_loop():
                   2: {1: {'weight': 1}}}
     graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
                      2: {1: {'weight': 1}, 0: {'weight': 1}}}
-    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1 = IncrementalMeritRank(graph_updated)
     ipr1.calculate(0)
 
-    ipr2 = IncrementalPageRank(graph_orig)
+    ipr2 = IncrementalMeritRank(graph_orig)
     ipr2.calculate(0)
     ipr2.add_edge(2, 0, 1)
     assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
@@ -326,10 +326,10 @@ def test_pagerank_incremental_add_edge_from_loop_source():
                   2: {0: {'weight': 1}}}
     graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
                      2: {1: {'weight': 1}, 0: {'weight': 1}}}
-    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1 = IncrementalMeritRank(graph_updated)
     ipr1.calculate(0)
 
-    ipr2 = IncrementalPageRank(graph_orig)
+    ipr2 = IncrementalMeritRank(graph_orig)
     ipr2.calculate(0)
     ipr2.add_edge(2, 1, 1)
     assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
@@ -340,10 +340,10 @@ def test_pagerank_incremental_delete_edge():
                   2: {3: {'weight': 1}, 1: {'weight': 1}}}
     graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
                      2: {1: {'weight': 1}}}
-    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1 = IncrementalMeritRank(graph_updated)
     ipr1.calculate(0)
 
-    ipr2 = IncrementalPageRank(graph_orig)
+    ipr2 = IncrementalMeritRank(graph_orig)
     ipr2.calculate(0)
     ipr2.add_edge(2, 3, 0)
     assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
@@ -354,10 +354,10 @@ def test_pagerank_incremental_delete_loop():
                   2: {0: {'weight': 1}, 1: {'weight': 1}}}
     graph_updated = {0: {1: {'weight': -1}, 2: {'weight': 1}},
                      2: {1: {'weight': 1}}}
-    ipr1 = IncrementalPageRank(graph_updated)
+    ipr1 = IncrementalMeritRank(graph_updated)
     ipr1.calculate(0)
 
-    ipr2 = IncrementalPageRank(graph_orig)
+    ipr2 = IncrementalMeritRank(graph_orig)
     ipr2.calculate(0)
     ipr2.add_edge(2, 0, 0)
     assert ipr2.get_ranks(0) == approx(ipr1.get_ranks(0), 0.1)
@@ -371,10 +371,10 @@ def test_pagerank_incremental_big():
         if graph.has_edge(node, node):
             graph.remove_edge(node, node)
 
-    ipr1 = IncrementalPageRank(graph)
+    ipr1 = IncrementalMeritRank(graph)
     ipr1.calculate(0)
 
-    ipr3 = IncrementalPageRank(graph={0: {}})
+    ipr3 = IncrementalMeritRank(graph={0: {}})
     ipr3.calculate(0)
     lll = list(graph.edges())
     random.shuffle(lll)
@@ -424,7 +424,7 @@ def test_walks_storage():
 def test_load_graph_from_persist_store(simple_graph):
     stor = Mock()
     stor.get_graph_and_calc_commands = lambda: (simple_graph, {0: 10})
-    ipr1 = IncrementalPageRank(persistent_storage=stor)
+    ipr1 = IncrementalMeritRank(persistent_storage=stor)
     assert ipr1.get_node_edges(0) == [(0, 1, 1), (0, 2, 1)]
     assert ipr1.get_node_score(0, 1) == 0.24
 
@@ -432,7 +432,7 @@ def test_load_graph_from_persist_store(simple_graph):
 def test_persist_edge_and_calc_commands():
     stor = Mock()
     stor.get_graph_and_calc_commands = lambda: ({}, {})
-    ipr1 = IncrementalPageRank(persistent_storage=stor)
+    ipr1 = IncrementalMeritRank(persistent_storage=stor)
     ipr1.add_edge(0, 1, weight=1.0)
     stor.put_edge.assert_called_with(0, 1, 1.0)
 

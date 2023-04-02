@@ -6,7 +6,7 @@ import networkx as nx
 from _pytest.python_api import approx
 from networkx.algorithms.approximation import traveling_salesman_problem
 
-from meritrank_python.rank import IncrementalPageRank
+from meritrank_python.rank import IncrementalMeritRank
 
 
 class TestGraphListBuilder:
@@ -181,14 +181,14 @@ print(f"Steps travel: {len(travel_path)} unique {len(edges_taken)}")
 
 calculated_results = {}
 for sig, graph in merged.items():
-    ipr = IncrementalPageRank(graph)
+    ipr = IncrementalMeritRank(graph)
     ipr.calculate(0)
     # print(sig, ipr.get_ranks(0))
     calculated_results[sig] = ipr.get_ranks(0)
     pass
 
 start_graph = merged[sigs[travel_path[0]]]
-ipr = IncrementalPageRank(start_graph)
+ipr = IncrementalMeritRank(start_graph)
 ipr.calculate(0)
 
 stepped_results = {sigs[travel_path[0]]: ipr.get_ranks(0)}

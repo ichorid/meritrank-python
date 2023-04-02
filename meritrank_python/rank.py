@@ -189,7 +189,7 @@ class WalkStorage:
         return self.__walks.get(node)
 
 
-class IncrementalPageRank:
+class IncrementalMeritRank:
     def __init__(self, graph=None, persistent_storage=None) -> None:
         self.__persistent_storage = persistent_storage
         # FIXME: graph vs persistent_storage options
@@ -219,9 +219,9 @@ class IncrementalPageRank:
 
     def calculate(self, ego: NodeId, num_walks: int = 10000):
         """
-        Calculate the PageRank from the perspective of the given node.
+        Calculate the MeritRank from the perspective of the given node.
         If there are already walks for the node, drop them and calculate anew.
-        :param ego: The source node to calculate the PageRank for.
+        :param ego: The source node to calculate the MeritRank for.
         :param num_walks: The number of walks that should be used
         """
         if self.__persistent_storage is not None:

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from meritrank_python.disk_persistence import GraphPersistentStore
-from meritrank_python.rank import NodeId, IncrementalPageRank
+from meritrank_python.rank import NodeId, IncrementalMeritRank
 
 
 class Edge(BaseModel):
@@ -13,7 +13,7 @@ class Edge(BaseModel):
 
 
 class MeritRankRoutes(Routable):
-    def __init__(self, rank: IncrementalPageRank) -> None:
+    def __init__(self, rank: IncrementalMeritRank) -> None:
         super().__init__()
         self.__rank = rank
 
@@ -52,7 +52,7 @@ class MeritRankRoutes(Routable):
 def create_meritrank_app(rank_instance=None, persistent_storage=None):
     app = FastAPI()
     user_routes = MeritRankRoutes(
-        rank_instance or IncrementalPageRank(persistent_storage=
+        rank_instance or IncrementalMeritRank(persistent_storage=
             persistent_storage or GraphPersistentStore()))
     app.include_router(user_routes.router)
     return app
