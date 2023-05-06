@@ -61,7 +61,7 @@ class RandomWalk(List[NodeId]):
         #        └─────────────────────┘
         # Resulting penalties for the nodes:
         # node     A  -  B  D  E  F  G
-        # "tags"   DF -  DF F  F
+        # "tags"   DF -  DF DF F  F
         # penalty  2  -  2  2  1  1  0
         #
         penalties: Dict[NodeId, float] = {}
@@ -121,51 +121,66 @@ class WalkStorage:
     def get_walks_through_node(self, node: NodeId):
         return self.__walks.get(node, {})
 
+    def __decide_skip_invalidation(self, walk, pos, edge, step_recalc_probability):
+        # Optimization: try not to invalidate all the walks
+        # going through an ego node. Instead, only invalidate those
+        # walks that go through the deleted edge.
+        # The probability distribution of the remaining walks will still be
+        # correct, because removal of a single edge does not
+        # affect the relative weights of the remaining edges.
+        if step_recalc_probability == 0.0:
+            may_skip, pos = self.__decide_skip_invalidation_on_edge_deletion(
+                walk, pos, edge)
+        else:
+            may_skip, pos = self.__decide_skip_invalidation_on_edge_addition(
+                walk, pos, edge,
+                step_recalc_probability)
+        return may_skip, pos
+
+    def __decide_skip_invalidation_on_edge_deletion(self, walk, pos, edge):
+        invalidated_node, dst_node = edge
+        # Edge deletion
+        assert len(walk) > pos
+        may_skip = True
+        if pos == len(walk) - 1:
+            may_skip = True
+        else:
+            for i in range(pos, len(walk) - 2 + 1):
+                if walk[i: i + 2] == [invalidated_node, dst_node]:
+                    pos = i
+                    may_skip = False
+                    break
+        return may_skip, pos
+
+    def __decide_skip_invalidation_on_edge_addition(self, walk, pos, edge,
+                                                    step_recalc_probability):
+        invalidated_node, dst_node = edge
+        # Edge addition
+        may_skip = True
+        for i in range(pos, len(walk)):
+            if walk[i] == invalidated_node:
+                pos = i
+                if random.random() <= step_recalc_probability:
+                    may_skip = False
+                    break
+
+        return may_skip, pos
+
     def invalidate_walks_through_node(self, invalidated_node: NodeId,
                                       dst_node: NodeId = None,
-                                      step_recalc_probability: float = 0.0,
-                                      alpha=None) -> \
+                                      step_recalc_probability: float = 0.0) -> \
             List[Tuple[RandomWalk, RandomWalk]]:
         if (walks := self.__walks.get(invalidated_node)) is None:
             return []
         invalidated_walks = []
         for uid, pos_walk in walks.items():
             pos, walk = pos_walk.pos, pos_walk.walk
-            # Optimization: try not to invalidate all the walks
-            # going through an ego node. Instead, only invalidate those
-            # walks that go through the deleted edge.
-            # The probability distribution of the remaining walks will still be
-            # correct, because removal of a single edge does not
-            # affect the relative weights of the remaining edges.
-            if OPTIMIZE_INVALIDATION:
-                if dst_node is not None:
-                    if step_recalc_probability == 0.0:
-                        # Edge deletion
-                        assert len(walk) > pos
-                        may_skip = True
-                        if pos == len(walk) - 1:
-                            may_skip = True
-                        else:
-                            for i in range(pos, len(walk) - 2 + 1):
-                                if walk[i: i + 2] == [invalidated_node,
-                                                      dst_node]:
-                                    pos = i
-                                    may_skip = False
-                                    break
-                        if may_skip:
-                            continue
-                    else:
-                        # Edge addition
-                        may_skip = True
-                        for i in range(pos, len(walk)):
-                            if walk[i] == invalidated_node:
-                                pos = i
-                                if random.random() <= step_recalc_probability:
-                                    may_skip = False
-                                    break
-
-                        if may_skip:
-                            continue
+            if OPTIMIZE_INVALIDATION and dst_node is not None:
+                may_skip, pos = self.__decide_skip_invalidation(
+                    walk, pos, (invalidated_node, dst_node),
+                    step_recalc_probability)
+                if may_skip:
+                    continue
 
             # For every node mentioned in the invalidated subsequence,
             # remove the corresponding entries from the bookkeeping dict
@@ -296,7 +311,8 @@ class IncrementalMeritRank:
         node = start_node
         walk = RandomWalk()
         while ((neighbours := self.__neighbours_weighted(node))
-               and (skip_alpha_on_first_step or random.random() <= self.alpha)):
+               and (
+                       skip_alpha_on_first_step or random.random() <= self.alpha)):
             skip_alpha_on_first_step = False
             peers, weights = zip(*neighbours.items())
             next_step = random.choices(peers, weights=weights, k=1)[0]
@@ -388,7 +404,7 @@ class IncrementalMeritRank:
         # it stops naturally.
         new_segment_start = len(walk)
         first_step = force_first_step if force_first_step is not None else \
-        walk[-1]
+            walk[-1]
         if force_first_step is not None:
             # Extra care must be taken not to bias the distribution
             # by adding the first step without re-sampling the probability
@@ -437,8 +453,7 @@ class IncrementalMeritRank:
 
             invalidated_walks = self.__walks.invalidate_walks_through_node(s,
                                                                            dst_node=d,
-                                                                           step_recalc_probability=step_recalc_probability,
-                                                                           alpha=self.alpha)
+                                                                           step_recalc_probability=step_recalc_probability)
 
             negs_cache = {}
             for (walk, invalidated_segment) in invalidated_walks:
@@ -475,7 +490,8 @@ class IncrementalMeritRank:
                 self.__recalc_invalidated_walk(
                     walk,
                     force_first_step=d if step_recalc_probability > 0.0 else None,
-                    skip_alpha_on_first_step=OPTIMIZE_INVALIDATION and (w == 0.0)
+                    skip_alpha_on_first_step=OPTIMIZE_INVALIDATION and (
+                            w == 0.0)
                 )
             pass
 
