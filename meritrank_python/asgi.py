@@ -13,9 +13,14 @@ class Edge(BaseModel):
 
 
 class MeritRankRoutes(Routable):
-    def __init__(self, rank: IncrementalMeritRank) -> None:
+    def __init__(self,
+                 rank: IncrementalMeritRank,
+                 persistent_storage: GraphPersistentStore = None) -> None:
         super().__init__()
         self.__rank = rank
+        self.__persistent_storage = persistent_storage
+        # The set of egos for which MeritRank has already been calculated
+        self.__egos = set()
 
     @get("/edge/{src}/{dest}")
     async def get_edge(self, src: NodeId, dest: NodeId):
@@ -24,35 +29,38 @@ class MeritRankRoutes(Routable):
 
     @put("/edge")
     async def put_edge(self, edge: Edge):
+        if self.__persistent_storage is not None:
+            self.__persistent_storage.put_edge(edge.src,
+                                               edge.dest,
+                                               edge.weight)
         self.__rank.add_edge(edge.src, edge.dest, edge.weight)
         return {"message": f"Added edge {edge.src} -> {edge.dest} "
                            f"with weight {edge.weight}"}
 
-    @put("/walks_count/{src}")
-    async def put_walks_count(self, src: NodeId, count: int):
-        self.__rank.calculate(src, count)
+    @get("/scores/{ego}")
+    async def get_scores(self, ego: NodeId, limit: int | None = None):
+        self.__maybe_add_ego(ego)
+        return self.__rank.get_ranks(ego, limit=limit)
 
-    @get("/walks_count/{src}")
-    async def get_walks_count(self, src: NodeId):
-        return self.__rank.get_walks_count_for_node(src)
-
-    @get("/scores/{src}")
-    async def get_scores(self, src: NodeId, limit: int | None = None):
-        return self.__rank.get_ranks(src, limit=limit)
-
-    @get("/node_score/{src}/{dest}")
-    async def get_node_score(self, src: NodeId, dest: NodeId):
-        return self.__rank.get_node_score(src, dest)
+    @get("/node_score/{ego}/{dest}")
+    async def get_node_score(self, ego: NodeId, dest: NodeId):
+        self.__maybe_add_ego(ego)
+        return self.__rank.get_node_score(ego, dest)
 
     @get("/node_edges/{node}")
     async def get_node_edges(self, node: NodeId):
         return self.__rank.get_node_edges(node)
 
+    def __maybe_add_ego(self, ego):
+        if ego not in self.__egos:
+            self.__rank.calculate(ego)
 
-def create_meritrank_app(rank_instance=None, persistent_storage=None):
+
+def create_meritrank_app():
+    persistent_storage = GraphPersistentStore()
+    rank_instance = IncrementalMeritRank(persistent_storage.get_graph())
+    user_routes = MeritRankRoutes(rank_instance, persistent_storage)
+
     app = FastAPI()
-    user_routes = MeritRankRoutes(
-        rank_instance or IncrementalMeritRank(persistent_storage=
-            persistent_storage or GraphPersistentStore()))
     app.include_router(user_routes.router)
     return app

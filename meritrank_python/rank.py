@@ -121,7 +121,8 @@ class WalkStorage:
     def get_walks_through_node(self, node: NodeId):
         return self.__walks.get(node, {})
 
-    def __decide_skip_invalidation(self, walk, pos, edge, step_recalc_probability):
+    def __decide_skip_invalidation(self, walk, pos, edge,
+                                   step_recalc_probability):
         # Optimization: try not to invalidate all the walks
         # going through an ego node. Instead, only invalidate those
         # walks that go through the deleted edge.
@@ -205,13 +206,7 @@ class WalkStorage:
 
 
 class IncrementalMeritRank:
-    def __init__(self, graph=None, persistent_storage=None) -> None:
-        self.__persistent_storage = persistent_storage
-        # FIXME: graph vs persistent_storage options
-        rank_calc_commands = None
-        if self.__persistent_storage is not None:
-            graph, rank_calc_commands = self.__persistent_storage.get_graph_and_calc_commands()
-
+    def __init__(self, graph=None) -> None:
         self.__graph = nx.DiGraph(graph)
         self.__walks = WalkStorage()
         self.__personal_hits: Dict[NodeId, Counter] = {}
@@ -221,10 +216,6 @@ class IncrementalMeritRank:
         for node in self.__graph.nodes():
             if self.__graph.has_edge(node, node):
                 raise SelfReferenceNotAllowed
-
-        if rank_calc_commands is not None:
-            for node, num_walks in rank_calc_commands.items():
-                self.calculate(node, num_walks)
 
     def get_graph(self):
         return nx.to_dict_of_dicts(self.__graph)
@@ -239,8 +230,6 @@ class IncrementalMeritRank:
         :param ego: The source node to calculate the MeritRank for.
         :param num_walks: The number of walks that should be used
         """
-        if self.__persistent_storage is not None:
-            self.__persistent_storage.put_rank_calc_command(ego, num_walks)
         self.__walks.drop_walks_from_node(ego)
 
         if not self.__graph.has_node(ego):
@@ -330,13 +319,6 @@ class IncrementalMeritRank:
         if not self.__graph.has_node(node):
             return None
         return list(self.__graph.edges(node, data='weight'))
-
-    def __persist_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
-        if self.__persistent_storage is not None:
-            if weight == 0.0:
-                self.__persistent_storage.remove_edge(src, dest)
-            else:
-                self.__persistent_storage.put_edge(src, dest, weight)
 
     def __update_penalties_for_edge(self,
                                     src: NodeId,
@@ -430,7 +412,6 @@ class IncrementalMeritRank:
         old_weight = self.__graph[src][dest]['weight'] if old_edge else 0.0
         if old_weight == weight:
             return
-        self.__persist_edge(src, dest, weight)
 
         # There are nine cases for adding/updating an edge: the variants are
         # negative, zero, and positive weight for both the old and the new
