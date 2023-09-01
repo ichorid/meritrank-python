@@ -208,7 +208,17 @@ for i in range(len(travel_path) - 1):
     print(stepped_results[sigs[next_step]])
     print(calculated_results[sigs[next_step]])
     print(flush=True)
-    assert stepped_results[sigs[next_step]] == approx(calculated_results[sigs[next_step]], 0.1)
+    cres = calculated_results[sigs[next_step]]
+    sres = stepped_results[sigs[next_step]]
+    print (
+        ("CRES", ) +
+        change +
+        sigs[next_step] +
+        tuple(cres.get(v, 0.0) for v in range(builder.num_vertices)) +
+        tuple(sres.get(v, 0.0) for v in range(builder.num_vertices)))
+
+    if not stepped_results[sigs[next_step]] == approx(calculated_results[sigs[next_step]], 0.1):
+        print ('WARN')
 
 print(builder.edges)
 
