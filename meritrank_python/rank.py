@@ -9,7 +9,7 @@ import networkx as nx
 # TODO: use __slots__ to speed up stuff:
 # https://tommyseattle.com/tech/python-class-dict-named-tuple-memory-and-perf.html
 
-NodeId: TypeAlias = int
+NodeId: TypeAlias = str
 
 ASSERT = False
 OPTIMIZE_INVALIDATION = True
@@ -220,9 +220,6 @@ class IncrementalMeritRank:
     def get_graph(self):
         return nx.to_dict_of_dicts(self.__graph)
 
-    def get_walks_count_for_node(self, src: NodeId):
-        return len(self.__walks.get_walks_starting_from_node(src))
-
     def calculate(self, ego: NodeId, num_walks: int = 10000):
         """
         Calculate the MeritRank from the perspective of the given node.
@@ -239,7 +236,7 @@ class IncrementalMeritRank:
 
         counter = self.__personal_hits[ego] = Counter()
         for _ in range(0, num_walks):
-            walk = self.perform_walk(ego)
+            walk = self.__perform_walk(ego)
             counter.update(set(walk))
             self.__walks.add_walk(walk)
             self.__update_negative_hits(walk, negs)
@@ -277,7 +274,7 @@ class IncrementalMeritRank:
         return [k for k, v in sorted(self.get_ranks(ego, limit).items(),
                                      key=lambda x: x[1], reverse=True)]
 
-    def perform_walk(self, start_node: NodeId) -> RandomWalk:
+    def __perform_walk(self, start_node: NodeId) -> RandomWalk:
         walk = RandomWalk([start_node])
         new_segment = self.__generate_walk_segment(start_node)
         walk.extend(new_segment)
