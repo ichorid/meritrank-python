@@ -1,5 +1,5 @@
 # Pull base image
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
@@ -33,7 +33,7 @@ WORKDIR /app
 
 
 # Install dependencies
-COPY pyproject.toml /app/
+COPY poetry.lock pyproject.toml /app/
 RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi --no-dev
 
 # Copy project
