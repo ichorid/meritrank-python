@@ -68,8 +68,7 @@ class RandomWalk(List[NodeId]):
         negs = neg_weights.copy()
         accumulated_penalty = 0.0
         for step in reversed(self):
-            if penalty := negs.pop(step, None):
-                accumulated_penalty += penalty
+            accumulated_penalty += negs.pop(step, 0.0)
             if accumulated_penalty != 0.0:
                 penalties[step] = accumulated_penalty
         return penalties
