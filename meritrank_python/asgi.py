@@ -22,12 +22,12 @@ class MeritRankRoutes(Routable):
         # The set of egos for which MeritRank has already been calculated
         self.__egos = set()
 
-    @get("/edge/{src}/{dest}")
+    @get("/edges/{src}/{dest}")
     async def get_edge(self, src: NodeId, dest: NodeId):
         if (weight := self.__rank.get_edge(src, dest)) is not None:
             return Edge(src=src, dest=dest, weight=weight)
 
-    @put("/edge")
+    @put("/edges")
     async def put_edge(self, edge: Edge):
         if self.__persistent_storage is not None:
             self.__persistent_storage.put_edge(edge.src,
@@ -56,10 +56,19 @@ class MeritRankRoutes(Routable):
             self.__rank.calculate(ego)
 
 
-def create_meritrank_app():
+def create_meritrank_app_with_persist():
     persistent_storage = GraphPersistentStore()
     rank_instance = IncrementalMeritRank(persistent_storage.get_graph())
     user_routes = MeritRankRoutes(rank_instance, persistent_storage)
+
+    app = FastAPI()
+    app.include_router(user_routes.router)
+    return app
+
+
+def create_meritrank_app():
+    rank_instance = IncrementalMeritRank()
+    user_routes = MeritRankRoutes(rank_instance)
 
     app = FastAPI()
     app.include_router(user_routes.router)
