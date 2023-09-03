@@ -24,7 +24,7 @@ class MeritRankRoutes(Routable):
 
     @get("/edges/{src}/{dest}")
     async def get_edge(self, src: NodeId, dest: NodeId):
-        print (id(self.__rank))
+        print(id(self.__rank))
         if (weight := self.__rank.get_edge(src, dest)) is not None:
             return Edge(src=src, dest=dest, weight=weight)
 
@@ -42,10 +42,11 @@ class MeritRankRoutes(Routable):
     async def put_graph(self, edges_list: list[Edge]):
         # Replace the existing MeritRank instance with a new one,
         # initialized from the given graph
-        print (id(self.__rank))
+        print(id(self.__rank))
         graph = {}
         for edge in edges_list:
-            graph.setdefault(edge.src, {}).setdefault(edge.dest, {})['weight'] = edge.weight
+            graph.setdefault(edge.src, {}).setdefault(edge.dest, {})[
+                'weight'] = edge.weight
 
         self.__rank = IncrementalMeritRank(graph)
         print(id(self.__rank))
@@ -70,12 +71,14 @@ class MeritRankRoutes(Routable):
             self.__rank.calculate(ego)
 
 
+app = FastAPI(title="MeritRank", version="0.2.0")
+
+
 def create_meritrank_app_with_persist():
     persistent_storage = GraphPersistentStore()
     rank_instance = IncrementalMeritRank(persistent_storage.get_graph())
     user_routes = MeritRankRoutes(rank_instance, persistent_storage)
 
-    app = FastAPI()
     app.include_router(user_routes.router)
     return app
 
@@ -84,6 +87,5 @@ def create_meritrank_app():
     rank_instance = IncrementalMeritRank()
     user_routes = MeritRankRoutes(rank_instance)
 
-    app = FastAPI()
     app.include_router(user_routes.router)
     return app
