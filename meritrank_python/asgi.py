@@ -24,6 +24,7 @@ class MeritRankRoutes(Routable):
 
     @get("/edges/{src}/{dest}")
     async def get_edge(self, src: NodeId, dest: NodeId):
+        print (id(self.__rank))
         if (weight := self.__rank.get_edge(src, dest)) is not None:
             return Edge(src=src, dest=dest, weight=weight)
 
@@ -36,6 +37,19 @@ class MeritRankRoutes(Routable):
         self.__rank.add_edge(edge.src, edge.dest, edge.weight)
         return {"message": f"Added edge {edge.src} -> {edge.dest} "
                            f"with weight {edge.weight}"}
+
+    @put("/graph")
+    async def put_graph(self, edges_list: list[Edge]):
+        # Replace the existing MeritRank instance with a new one,
+        # initialized from the given graph
+        print (id(self.__rank))
+        graph = {}
+        for edge in edges_list:
+            graph.setdefault(edge.src, {}).setdefault(edge.dest, {})['weight'] = edge.weight
+
+        self.__rank = IncrementalMeritRank(graph)
+        print(id(self.__rank))
+        return {"message": f"Added {len(edges_list)} edges"}
 
     @get("/scores/{ego}")
     async def get_scores(self, ego: NodeId, limit: int | None = None):
