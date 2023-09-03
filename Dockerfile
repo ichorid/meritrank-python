@@ -43,4 +43,4 @@ COPY . /app
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "meritrank_python.asgi:create_meritrank_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "--factory", "meritrank_python.asgi:create_meritrank_app", "--host", "0.0.0.0", "--port", "8000"]
