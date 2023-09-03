@@ -33,7 +33,7 @@ WORKDIR /app
 
 
 # Install dependencies
-COPY poetry.lock pyproject.toml /app/
+COPY pyproject.toml /app/
 RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi --no-dev
 
 # Copy project
