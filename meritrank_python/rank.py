@@ -27,6 +27,14 @@ class NodeDoesNotExist(Exception):
     pass
 
 
+class EgoNotInitialized(Exception):
+    """
+    This means that we tried to get some walks data for an ego
+    before initializing it by, e.g. creating walks from it (calling calculate)
+    """
+    pass
+
+
 class SelfReferenceNotAllowed(Exception):
     pass
 
@@ -240,22 +248,38 @@ class IncrementalMeritRank:
             self.__walks.add_walk(walk)
             self.__update_negative_hits(walk, negs)
 
+    def __check_ego(self, ego):
+        if (counter := self.__personal_hits.get(ego)) is None:
+            raise NodeDoesNotExist
+        if not counter.total():
+            raise EgoNotInitialized
+
     def get_node_score(self, ego: NodeId, target: NodeId):
-        counter = self.__personal_hits[ego]
         # TODO: optimize by caching the result?
-        # assert ego not in counter
-        hits = counter[target]
+        self.__check_ego(ego)
+        counter = self.__personal_hits[ego]
+
+        # If there were no hits, the walks have never hit the target node
+        hits = counter.get(target, 0)
 
         if ASSERT:
             if hits > 0 and not nx.has_path(self.__graph, ego, target):
                 assert False
 
         # TODO: normalize the negative hits?
-        hits_penalized = hits + self.__neg_hits.get(ego, {}).get(target, 0)
+        neg_hits = self.__neg_hits.get(ego, {}).get(target, 0)
+        hits_penalized = hits + neg_hits
         return hits_penalized / counter.total()
 
-    def get_ranks(self, ego: NodeId, limit=None):
-        # FIXME: optimize out repeated totals, etc.
+    def get_ranks(self, ego: NodeId, limit=None) -> dict[NodeId, float]:
+        """
+        Return up to limit of ranks from the perspective of the given ego.
+        :param ego:
+        :param limit:
+        :return: dict[NodeId, float]
+        """
+        # TODO: optimize out repeated totals, etc.
+        self.__check_ego(ego)
         counter = self.__personal_hits[ego]
         for key, value in list(counter.items()):
             if float(value) == 0.0:
@@ -270,6 +294,7 @@ class IncrementalMeritRank:
         return dict(sorted_ranks)
 
     def get_ordered_peers(self, ego: NodeId, limit=None):
+        self.__check_ego(ego)
         return [k for k, v in sorted(self.get_ranks(ego, limit).items(),
                                      key=lambda x: x[1], reverse=True)]
 
@@ -458,8 +483,9 @@ class IncrementalMeritRank:
                         if len(self.__walks.get_walks_through_node(
                                 peer)) != count:
                             assert False
-                        if count > 0 and w > 0 and not nx.has_path(self.__graph, ego,
-                                                                   peer):
+                        if count > 0 and w > 0 and not nx.has_path(
+                                self.__graph, ego,
+                                peer):
                             assert False
 
             pass
