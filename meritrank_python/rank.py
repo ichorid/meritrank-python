@@ -458,8 +458,8 @@ class IncrementalMeritRank:
                         if len(self.__walks.get_walks_through_node(
                                 peer)) != count:
                             assert False
-                        if count > 0 and not nx.has_path(self.__graph, ego,
-                                                         peer):
+                        if count > 0 and w > 0 and not nx.has_path(self.__graph, ego,
+                                                                   peer):
                             assert False
 
             pass
