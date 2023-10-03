@@ -1,3 +1,4 @@
+import logging
 import random
 from operator import itemgetter
 
@@ -44,8 +45,8 @@ def simple_graph():
 def simple_graph_negative():
     return (
         {'0': {'1': {'weight': 1.0},
-             '2': {'weight': 1.0},
-             '3': {'weight': -1.0}},
+               '2': {'weight': 1.0},
+               '3': {'weight': -1.0}},
          '1': {'2': {'weight': 1.0}},
          '2': {'3': {'weight': 1.0}}
          }
@@ -65,6 +66,15 @@ def get_scale_free_graph(count):
     for edge in graph.edges():
         weighted_graph.add_edge(str(edge[0]), str(edge[1]), weight=1.0)
     return weighted_graph
+
+
+def test_logging(caplog, simple_graph):
+    logger = logging.getLogger()
+    logger.setLevel("INFO")
+    ipr = IncrementalMeritRank(simple_graph, logger=logger)
+    ipr.calculate('0')
+
+    assert caplog.records[0].levelname == 'INFO'
 
 
 def test_update_walk_penalties():
@@ -191,9 +201,11 @@ def test_add_edge_pn(spi):
     spi.add_edge('0', '1', weight=-1.0)
     assert spi.get_ordered_peers('0') == ['0', '2', '3']
 
+
 def test_basic_negative(spi):
     # Just test that the order of the test graph is as we expect
     assert spi.get_ordered_peers('0') == ['0', '1', '2', '3']
+
 
 def test_add_edge_nz(spi):
     # Remove negative edge
@@ -245,7 +257,7 @@ def test_add_edge_commutativity(simple_graph):
 
 def test_meritrank_negative(spi):
     assert spi.get_ranks('0') == approx({'0': 0.118, '1': 0.04, '2': 0.041, '3': 0.00},
-                                      0.1)
+                                        0.1)
 
 
 def test_pagerank_incremental(simple_graph):
@@ -418,5 +430,3 @@ def test_walks_storage():
     s = WalkStorage()
     walk = RandomWalk([100, 200, 300])
     s.add_walk(walk)
-
-

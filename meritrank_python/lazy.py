@@ -12,6 +12,7 @@ class LazyMeritRank(IncrementalMeritRank):
 
     def __maybe_add_ego(self, ego):
         if ego not in self.__egos:
+            self.__logger.debug("LazyMeritRank: Adding new ego: %s", ego)
             self.__egos.add(ego)
             self.calculate(ego)
 
