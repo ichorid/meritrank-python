@@ -219,7 +219,7 @@ class IncrementalMeritRank:
         self.__walks = WalkStorage()
         self.__personal_hits: Dict[NodeId, Counter] = {}
         self.__neg_hits: Dict[NodeId, Dict[NodeId, float]] = {}
-        self.__logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self.alpha = 0.85
 
         for node in self.__graph.nodes():
@@ -236,7 +236,7 @@ class IncrementalMeritRank:
         :param ego: The source node to calculate the MeritRank for.
         :param num_walks: The number of walks that should be used
         """
-        self.__logger.info("Calculating MeritRank for ego: %s, num_walks: %i", ego, num_walks)
+        self.logger.info("Calculating MeritRank for ego: %s, num_walks: %i", ego, num_walks)
         self.__walks.drop_walks_from_node(ego)
 
         if not self.__graph.has_node(ego):
@@ -259,7 +259,7 @@ class IncrementalMeritRank:
 
     def get_node_score(self, ego: NodeId, target: NodeId):
         # TODO: optimize by caching the result?
-        self.__logger.info("Getting score: %s -> %s", ego, target)
+        self.logger.info("Getting score: %s -> %s", ego, target)
         self.__check_ego(ego)
         counter = self.__personal_hits[ego]
 
@@ -282,9 +282,9 @@ class IncrementalMeritRank:
         :param limit:
         :return: dict[NodeId, float]
         """
-        self.__logger.info("Getting ranks for ego: %s, limit %s",
-                           ego,
-                           str(limit if limit is not None else "None"))
+        self.logger.info("Getting ranks for ego: %s, limit %s",
+                         ego,
+                         str(limit if limit is not None else "None"))
         # TODO: optimize out repeated totals, etc.
         self.__check_ego(ego)
         counter = self.__personal_hits[ego]
@@ -298,7 +298,7 @@ class IncrementalMeritRank:
         sorted_ranks = sorted(peer_scores, key=lambda x: x[1], reverse=True)[
                        :limit]
 
-        self.__logger.debug("Returning %i ranks for ego: %s", len(sorted_ranks), ego)
+        self.logger.debug("Returning %i ranks for ego: %s", len(sorted_ranks), ego)
         return dict(sorted_ranks)
 
     def get_ordered_peers(self, ego: NodeId, limit=None):
@@ -435,14 +435,14 @@ class IncrementalMeritRank:
         self.__walks.add_walk(walk, start_pos=new_segment_start)
 
     def add_edge(self, src: NodeId, dest: NodeId, weight: float = 1.0):
-        self.__logger.info("Putting edge: (%s, %s, %f)", src, dest, weight)
+        self.logger.info("Putting edge: (%s, %s, %f)", src, dest, weight)
         if src == dest:
             raise SelfReferenceNotAllowed
         old_edge = self.get_edge(src, dest)
         old_weight = self.__graph[src][dest]['weight'] if old_edge else 0.0
         if old_weight == weight:
-            self.__logger.debug("Putting edge: (%s, %s, %f) - no action, new edge is the same as before",
-                                src, dest, weight)
+            self.logger.debug("Putting edge: (%s, %s, %f) - no action, new edge is the same as before",
+                              src, dest, weight)
             return
 
         # There are nine cases for adding/updating an edge: the variants are
