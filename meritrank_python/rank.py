@@ -36,6 +36,10 @@ class EgoNotInitialized(Exception):
     pass
 
 
+class EgoCounterEmpty(Exception):
+    pass
+
+
 class SelfReferenceNotAllowed(Exception):
     pass
 
@@ -253,9 +257,9 @@ class IncrementalMeritRank:
 
     def __check_ego(self, ego):
         if (counter := self.__personal_hits.get(ego)) is None:
-            raise NodeDoesNotExist
-        if not counter.total():
             raise EgoNotInitialized
+        if not counter.total():
+            raise EgoCounterEmpty
 
     def get_node_score(self, ego: NodeId, target: NodeId):
         # TODO: optimize by caching the result?
