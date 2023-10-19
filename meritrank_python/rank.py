@@ -356,7 +356,7 @@ class IncrementalMeritRank:
     def get_node_edges(self, node: NodeId) -> list[tuple[
         NodeId, NodeId, float]] | None:
         if not self.__graph.has_node(node):
-            raise NodeDoesNotExist(ego)
+            raise NodeDoesNotExist(node)
         return list(self.__graph.edges(node, data='weight'))
 
     def __update_penalties_for_edge(self,

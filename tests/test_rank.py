@@ -278,6 +278,10 @@ def test_get_node_edges(simple_graph):
     ipr1 = IncrementalMeritRank(simple_graph)
     assert ipr1.get_node_edges('0') == [('0', '1', 1.0), ('0', '2', 1.0)]
 
+def test_get_node_edges_no_node(simple_graph):
+    ipr1 = IncrementalMeritRank(simple_graph)
+    assert pytest.raises(NodeDoesNotExist, ipr1.get_node_edges, "aaa")
+
 
 def test_pagerank_incremental_basic():
     graph = {'0': {'1': {'weight': 1.0}}}
