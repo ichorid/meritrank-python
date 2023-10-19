@@ -25,7 +25,13 @@ def sign(x: float) -> int:
 
 
 class NodeDoesNotExist(Exception):
-    pass
+    def __init__(self, node, message="Node not found in the graph"):
+        self.node = node
+        self.message = message
+        super().__init__(self.message)
+
+    def __str__(self):
+        return f'{self.node} -> {self.message}'
 
 
 class EgoNotInitialized(Exception):
@@ -244,7 +250,7 @@ class IncrementalMeritRank:
         self.__walks.drop_walks_from_node(ego)
 
         if not self.__graph.has_node(ego):
-            raise NodeDoesNotExist
+            raise NodeDoesNotExist(ego)
 
         negs = self.__neighbours_weighted(ego, positive=False)
 
@@ -350,7 +356,7 @@ class IncrementalMeritRank:
     def get_node_edges(self, node: NodeId) -> list[tuple[
         NodeId, NodeId, float]] | None:
         if not self.__graph.has_node(node):
-            return None
+            raise NodeDoesNotExist(ego)
         return list(self.__graph.edges(node, data='weight'))
 
     def __update_penalties_for_edge(self,
