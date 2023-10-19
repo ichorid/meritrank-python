@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "meritrank-python"
-version = "0.2.6"
+version = "0.2.7"
 description = "MeritRank decentralized, sybil-resistant, personalized ranking algorithm library"
 authors = ["V.G. Bulavintsev <golem.md@gmail.com>"]
 readme = "README.md"
@@ -10,8 +10,8 @@ license = "GPLv2"
 
 
 [tool.poetry.dependencies]
-python = "^3.10"
-networkx = "^2.8.8"
+python = ">=3.10"
+networkx = ">=2.8.8"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"
