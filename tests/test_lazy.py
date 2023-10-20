@@ -15,6 +15,13 @@ def test_get_node_score(simple_graph):
     assert mr.get_node_score("0", "1") is not None
 
 
+def test_calculate(simple_graph):
+    # Make sure that calculate properly counts as ego-adding operation
+    mr = LazyMeritRank(simple_graph)
+    mr.calculate("0")
+    assert ("0") in mr.egos
+
+
 def test_logging(caplog, simple_graph):
     logger = logging.getLogger()
     logger.setLevel("INFO")
