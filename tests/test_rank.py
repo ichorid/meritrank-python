@@ -397,6 +397,15 @@ def test_pagerank_incremental_big():
         ipr3.add_edge(edge[0], edge[1], weight=1.0)
     assert_ranking_approx(ipr1.get_ranks('0'), ipr3.get_ranks('0'), precision=0.1)
 
+def test_many_egos_change_edge(simple_graph_negative):
+    ipr = IncrementalMeritRank()
+    ipr.add_edge("0", "1")
+    ipr.calculate("0", num_walks=1)
+    ipr.calculate("1", num_walks=1)
+
+    ipr.add_edge("0","1", 2.0)
+
+
 
 def test_drop_walks():
     s = WalkStorage()

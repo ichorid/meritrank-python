@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "meritrank-python"
-version = "0.2.8"
+version = "0.2.9"
 description = "MeritRank decentralized, sybil-resistant, personalized ranking algorithm library"
 authors = ["V.G. Bulavintsev <golem.md@gmail.com>"]
 readme = "README.md"

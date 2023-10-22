@@ -134,7 +134,6 @@ class WalkStorage:
             for affected_node in walk:
                 if self.__walks[affected_node].get(walk.uuid):
                     del self.__walks[affected_node][walk.uuid]
-        self.__walks.get(node, {}).clear()
 
     def get_walks_through_node(self, node: NodeId):
         return self.__walks.get(node, {})
@@ -247,10 +246,10 @@ class IncrementalMeritRank:
         :param num_walks: The number of walks that should be used
         """
         self.logger.info("Calculating MeritRank for ego: %s, num_walks: %i", ego, num_walks)
-        self.__walks.drop_walks_from_node(ego)
-
         if not self.__graph.has_node(ego):
             raise NodeDoesNotExist(ego)
+
+        self.__walks.drop_walks_from_node(ego)
 
         negs = self.__neighbours_weighted(ego, positive=False)
 
