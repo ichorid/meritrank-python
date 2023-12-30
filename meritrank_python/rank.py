@@ -13,8 +13,47 @@ import networkx as nx
 NodeId: TypeAlias = str
 
 OPTIMIZE_INVALIDATION = True
-
 DEFAULT_NUMBER_OF_WALKS = 10000
+
+"""
+
+***
+Friends don't let friends <do something>
+(c) an old meme
+
+***
+When my fist clenches, crack it open
+Before I use it and lose my cool
+When I smile, tell me some bad news
+Before I laugh and act like a fool
+
+And if I swallow anything evil
+Put your finger down my throat
+And if I shiver, please give me a blanket
+Keep me warm, let me wear your coat
+(c) The Who
+
+***
+In the grand weave of Bayesian dance,  
+A Markov blanket holds a powerful stance.  
+A shield, a bridge, in the statistical night,  
+Directing the flow of the informational flight.
+
+In the echo of the free-energy chime,  
+It shapes the self over evolutionary time.  
+Between the world and self, it enhances the divide,  
+Yet through its filter, important exchanges confide.
+(c) LLM
+
+***
+"Когда мы смотрим в оба,
+То видим только зеркало кривое"
+И в тех местах, где оптика лгала
+Я выпрямлял _собою_ зеркала  
+(с) Зимовье Зверей
+
+"""
+
 
 
 def sign(x: float) -> int:
@@ -331,20 +370,17 @@ class IncrementalMeritRank:
         for nbr in self.__graph.neighbors(node):
             # Only return positive/negative neighbours
             weight = self.__graph[node][nbr]['weight']
-            if weight == 0:
-                continue
             if positive and weight > 0 or not positive and weight < 0:
                 neighbours[nbr] = weight
         return neighbours
 
     def __generate_walk_segment(self, start_node: NodeId,
-                                skip_alpha_on_first_step=False) -> RandomWalk:
+                                apply_alpha_on_first_step=True) -> RandomWalk:
         node = start_node
         walk = RandomWalk()
-        while ((neighbours := self.__neighbours_weighted(node))
-               and (
-                       skip_alpha_on_first_step or random.random() <= self.alpha)):
-            skip_alpha_on_first_step = False
+        while neighbours := self.__neighbours_weighted(node):
+            if (apply_alpha_on_first_step or walk) and random.random() > self.alpha:
+                break
             peers, weights = zip(*neighbours.items())
             next_step = random.choices(peers, weights=weights, k=1)[0]
             walk.append(next_step)
@@ -419,7 +455,7 @@ class IncrementalMeritRank:
 
     def __recalc_invalidated_walk(self, walk: RandomWalk,
                                   force_first_step: NodeId = None,
-                                  skip_alpha_on_first_step=False):
+                                  apply_alpha_on_first_step=True):
         ego = walk[0]
         counter = self.__personal_hits[ego]
 
@@ -433,13 +469,13 @@ class IncrementalMeritRank:
             # Extra care must be taken not to bias the distribution
             # by adding the first step without re-sampling the probability
             # for stopping the walk.
-            if skip_alpha_on_first_step:
-                skip_alpha_on_first_step = False
+            if not apply_alpha_on_first_step:
+                apply_alpha_on_first_step = True
             else:
                 if random.random() >= self.alpha:
                     return
         new_segment = self.__generate_walk_segment(first_step,
-                                                   skip_alpha_on_first_step)
+                                                   apply_alpha_on_first_step)
         if force_first_step is not None:
             new_segment.insert(0, first_step)
         counter.update(set(new_segment).difference(set(walk)))
@@ -517,8 +553,7 @@ class IncrementalMeritRank:
                 self.__recalc_invalidated_walk(
                     walk,
                     force_first_step=d if step_recalc_probability > 0.0 else None,
-                    skip_alpha_on_first_step=OPTIMIZE_INVALIDATION and (
-                            w == 0.0)
+                    apply_alpha_on_first_step=not OPTIMIZE_INVALIDATION or w != 0.0
                 )
             pass
 
