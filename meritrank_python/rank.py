@@ -15,6 +15,8 @@ NodeId: TypeAlias = str
 OPTIMIZE_INVALIDATION = True
 DEFAULT_NUMBER_OF_WALKS = 10000
 
+
+
 """
 
 ***
@@ -294,14 +296,14 @@ class IncrementalMeritRank:
 
         self.__walks.drop_walks_from_node(ego)
 
-        negs = self.__neighbours_weighted(ego, positive=False)
+        negs = self.__neighbours_weighted_negative(ego)
 
         counter = self.__personal_hits[ego] = Counter()
         for _ in range(0, num_walks):
             walk = self.__perform_walk(ego)
             counter.update(set(walk))
             self.__walks.add_walk(walk)
-            self.__update_negative_hits(walk, negs)
+            self.__update_negative_hits(walk, negs, subtract=True)
 
     def __check_ego(self, ego):
         if (counter := self.__personal_hits.get(ego)) is None:
@@ -364,21 +366,20 @@ class IncrementalMeritRank:
         walk.extend(new_segment)
         return walk
 
-    def __neighbours_weighted(self, node: NodeId, positive=True) -> Dict[
-        NodeId, float]:
-        neighbours = {}
-        for nbr in self.__graph.neighbors(node):
-            # Only return positive/negative neighbours
-            weight = self.__graph[node][nbr]['weight']
-            if positive and weight > 0 or not positive and weight < 0:
-                neighbours[nbr] = weight
-        return neighbours
+    def __neighbours_weighted(self, node: NodeId) -> Dict[NodeId, float]:
+        return {nbr: abs(weight) for _, nbr, weight in self.__graph.out_edges(node, data='weight')}
+
+    def __neighbours_weighted_positive(self, node: NodeId) -> Dict[NodeId, float]:
+        return {nbr: weight for _,nbr, weight in self.__graph.out_edges(node, data='weight') if weight > 0}
+
+    def __neighbours_weighted_negative(self, node: NodeId) -> Dict[NodeId, float]:
+        return {nbr: abs(weight) for _, nbr, weight in self.__graph.out_edges(node, data='weight') if weight < 0}
 
     def __generate_walk_segment(self, start_node: NodeId,
                                 apply_alpha_on_first_step=True) -> RandomWalk:
         node = start_node
         walk = RandomWalk()
-        while neighbours := self.__neighbours_weighted(node):
+        while neighbours := self.__neighbours_weighted_positive(node):
             if (apply_alpha_on_first_step or walk) and random.random() > self.alpha:
                 break
             peers, weights = zip(*neighbours.items())
@@ -388,9 +389,7 @@ class IncrementalMeritRank:
         return walk
 
     def get_edge(self, src: NodeId, dest: NodeId) -> float | None:
-        if not self.__graph.has_edge(src, dest):
-            return None
-        return self.__graph[src][dest]['weight']
+        return self.__graph[src][dest]['weight'] if self.__graph.has_edge(src, dest) else None
 
     def get_node_edges(self, node: NodeId) -> list[tuple[
         NodeId, NodeId, float]] | None:
@@ -463,9 +462,8 @@ class IncrementalMeritRank:
         # walks allows us to complete a walk by just continuing it until
         # it stops naturally.
         new_segment_start = len(walk)
-        first_step = force_first_step if force_first_step is not None else \
-            walk[-1]
-        if force_first_step is not None:
+        first_step = force_first_step or walk[-1]
+        if force_first_step:
             # Extra care must be taken not to bias the distribution
             # by adding the first step without re-sampling the probability
             # for stopping the walk.
@@ -476,7 +474,7 @@ class IncrementalMeritRank:
                     return
         new_segment = self.__generate_walk_segment(first_step,
                                                    apply_alpha_on_first_step)
-        if force_first_step is not None:
+        if force_first_step:
             new_segment.insert(0, first_step)
         counter.update(set(new_segment).difference(set(walk)))
         walk.extend(new_segment)
@@ -509,7 +507,7 @@ class IncrementalMeritRank:
             # Clear the penalties resulting from the invalidated walks
             step_recalc_probability = 0.0
             if OPTIMIZE_INVALIDATION and w > 0.0 and self.__graph.has_node(s):
-                g_edges = self.__neighbours_weighted(s)
+                g_edges = self.__neighbours_weighted_positive(s)
                 sum_of_weights = sum(weight for weight in g_edges.values())
                 step_recalc_probability = w / (sum_of_weights + w)
 
@@ -519,13 +517,10 @@ class IncrementalMeritRank:
 
             negs_cache = {}
             for (walk, invalidated_segment) in invalidated_walks:
-                negs = negs_cache[walk[0]] = self.__neighbours_weighted(
-                    walk[0], positive=False)
+                negs = negs_cache[walk[0]] = self.__neighbours_weighted_negative(walk[0])
                 # The change includes a positive edge (former or new),
                 # so we must first clear the negative walks going through it.
-                self.__update_negative_hits(
-                    RandomWalk(walk + invalidated_segment), negs,
-                    subtract=True)
+                self.__update_negative_hits(RandomWalk(walk + invalidated_segment), negs)
             if float(w) == 0.0:
                 if self.__graph.has_edge(s, d):
                     self.__graph.remove_edge(s, d)
@@ -558,7 +553,7 @@ class IncrementalMeritRank:
             pass
 
             for (walk, invalidated_segment) in invalidated_walks:
-                self.__update_negative_hits(walk, negs_cache[walk[0]])
+                self.__update_negative_hits(walk, negs_cache[walk[0]], subtract=True)
 
             if self.ASSERT:
                 for ego, hits in self.__personal_hits.items():
