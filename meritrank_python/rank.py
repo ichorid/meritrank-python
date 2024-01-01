@@ -1,3 +1,4 @@
+import enum
 import logging
 import random
 import uuid
@@ -15,6 +16,11 @@ NodeId: TypeAlias = str
 OPTIMIZE_INVALIDATION = True
 DEFAULT_NUMBER_OF_WALKS = 10000
 
+
+class StopReason(enum.auto):
+    ALPHA = enum.auto()
+    NEGATIVE_HIT = enum.auto()
+    DEADEND = enum.auto()
 
 
 """
@@ -271,7 +277,8 @@ class IncrementalMeritRank:
         self.__graph = nx.DiGraph(graph)
         self.__walks = WalkStorage()
         self.__personal_hits: Dict[NodeId, Counter] = {}
-        self.__neg_hits: Dict[NodeId, Dict[NodeId, float]] = {}
+        self.__opinion_mismatch_penalties: Dict[NodeId, Dict[NodeId, float]] = {}
+        self.__enemy_of_my_friend_penalties: Dict[NodeId, Dict[NodeId, float]] = {}
         self.logger = logger or logging.getLogger(__name__)
         self.alpha = 0.85
 
@@ -300,10 +307,14 @@ class IncrementalMeritRank:
 
         counter = self.__personal_hits[ego] = Counter()
         for _ in range(0, num_walks):
-            walk = self.__perform_walk(ego)
+            walk, stop_reason = self.__perform_walk(ego)
             counter.update(set(walk))
+            if stop_reason is StopReason.NEGATIVE_HIT:
+                # We need to do it twice, because we have already
+                # added it to the counter in the previous line
+                counter.pop((walk[-1], walk[-1]))
             self.__walks.add_walk(walk)
-            self.__update_negative_hits(walk, negs, subtract=True)
+            self.__add_negative_hits(walk, negs)
 
     def __check_ego(self, ego):
         if (counter := self.__personal_hits.get(ego)) is None:
@@ -325,7 +336,7 @@ class IncrementalMeritRank:
                 assert False
 
         # TODO: normalize the negative hits?
-        neg_hits = self.__neg_hits.get(ego, {}).get(target, 0)
+        neg_hits = self.__opinion_mismatch_penalties.get(ego, {}).get(target, 0)
         hits_penalized = hits + neg_hits
         return hits_penalized / counter.total()
 
@@ -362,31 +373,36 @@ class IncrementalMeritRank:
 
     def __perform_walk(self, start_node: NodeId) -> RandomWalk:
         walk = RandomWalk([start_node])
-        new_segment = self.__generate_walk_segment(start_node)
+        new_segment, stop_reason = self.__generate_walk_segment(start_node)
         walk.extend(new_segment)
-        return walk
+        return walk, stop_reason
 
     def __neighbours_weighted(self, node: NodeId) -> Dict[NodeId, float]:
         return {nbr: abs(weight) for _, nbr, weight in self.__graph.out_edges(node, data='weight')}
 
     def __neighbours_weighted_positive(self, node: NodeId) -> Dict[NodeId, float]:
-        return {nbr: weight for _,nbr, weight in self.__graph.out_edges(node, data='weight') if weight > 0}
+        return {nbr: weight for _, nbr, weight in self.__graph.out_edges(node, data='weight') if weight > 0}
 
     def __neighbours_weighted_negative(self, node: NodeId) -> Dict[NodeId, float]:
         return {nbr: abs(weight) for _, nbr, weight in self.__graph.out_edges(node, data='weight') if weight < 0}
 
     def __generate_walk_segment(self, start_node: NodeId,
-                                apply_alpha_on_first_step=True) -> RandomWalk:
+                                apply_alpha_on_first_step=True) -> (RandomWalk, StopReason):
         node = start_node
         walk = RandomWalk()
+        stop_reason = StopReason.DEADEND
         while neighbours := self.__neighbours_weighted_positive(node):
             if (apply_alpha_on_first_step or walk) and random.random() > self.alpha:
+                stop_reason = StopReason.ALPHA
                 break
             peers, weights = zip(*neighbours.items())
             next_step = random.choices(peers, weights=weights, k=1)[0]
             walk.append(next_step)
+            if self.__graph[node][next_step]['weight'] < 0:
+                stop_reason = StopReason.NEGATIVE_HIT
+                break
             node = next_step
-        return walk
+        return walk, stop_reason
 
     def get_edge(self, src: NodeId, dest: NodeId) -> float | None:
         return self.__graph[src][dest]['weight'] if self.__graph.has_edge(src, dest) else None
@@ -423,7 +439,7 @@ class IncrementalMeritRank:
 
         # Calculate penalties and update neg_hits for each affected walk
         weight = self.__graph[src][dest]['weight']
-        ego_neg_hits = self.__neg_hits.setdefault(src, {})
+        ego_neg_hits = self.__opinion_mismatch_penalties.setdefault(src, {})
         for walk in affected_walks:
             penalties = walk.calculate_penalties({dest: weight})
             for node, penalty in penalties.items():
@@ -467,16 +483,19 @@ class IncrementalMeritRank:
             # Extra care must be taken not to bias the distribution
             # by adding the first step without re-sampling the probability
             # for stopping the walk.
-            if not apply_alpha_on_first_step:
-                apply_alpha_on_first_step = True
-            else:
-                if random.random() >= self.alpha:
+            if apply_alpha_on_first_step:
+                if random.random() > self.alpha:
                     return
-        new_segment = self.__generate_walk_segment(first_step,
-                                                   apply_alpha_on_first_step)
+            else:
+                apply_alpha_on_first_step = True
+        new_segment, stop_reason = self.__generate_walk_segment(first_step, apply_alpha_on_first_step)
         if force_first_step:
             new_segment.insert(0, first_step)
         counter.update(set(new_segment).difference(set(walk)))
+        if stop_reason is StopReason.NEGATIVE_HIT:
+            # We need to do it twice, because we have already
+            # added it to the counter in the previous line
+            counter.pop((walk[-1], walk[-1]))
         walk.extend(new_segment)
 
         self.__walks.add_walk(walk, start_pos=new_segment_start)
@@ -520,7 +539,7 @@ class IncrementalMeritRank:
                 negs = negs_cache[walk[0]] = self.__neighbours_weighted_negative(walk[0])
                 # The change includes a positive edge (former or new),
                 # so we must first clear the negative walks going through it.
-                self.__update_negative_hits(RandomWalk(walk + invalidated_segment), negs)
+                self.__remove_negative_hits(RandomWalk(walk + invalidated_segment), negs)
             if float(w) == 0.0:
                 if self.__graph.has_edge(s, d):
                     self.__graph.remove_edge(s, d)
@@ -553,7 +572,7 @@ class IncrementalMeritRank:
             pass
 
             for (walk, invalidated_segment) in invalidated_walks:
-                self.__update_negative_hits(walk, negs_cache[walk[0]], subtract=True)
+                self.__add_negative_hits(walk, negs_cache[walk[0]])
 
             if self.ASSERT:
                 for ego, hits in self.__personal_hits.items():
@@ -600,13 +619,23 @@ class IncrementalMeritRank:
          [pz, pp, pn],
          [nz, np, nn]][row][column](src, dest, weight)
 
+    def __add_negative_hits(self,
+                            walk: RandomWalk,
+                            negs: Dict[NodeId, float]) -> None:
+        self.__update_negative_hits(walk, negs, subtract=True)
+
+    def __remove_negative_hits(self,
+                               walk: RandomWalk,
+                               negs: Dict[NodeId, float]) -> None:
+        self.__update_negative_hits(walk, negs, subtract=False)
+
     def __update_negative_hits(self,
                                walk: RandomWalk,
                                negs: Dict[NodeId, float],
                                subtract: bool = False) -> None:
         if not set(negs).intersection(walk):
             return
-        ego_neg_hits = self.__neg_hits.setdefault(walk[0], {})
+        ego_neg_hits = self.__opinion_mismatch_penalties.setdefault(walk[0], {})
 
         # Note this can be further optimized by memorizing the positions of
         # the negs during the walk generation.
