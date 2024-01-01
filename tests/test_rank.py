@@ -10,6 +10,7 @@ from networkx import scale_free_graph
 from meritrank_python.rank import RandomWalk, PosWalk, WalkStorage, \
     IncrementalMeritRank, NodeDoesNotExist, SelfReferenceNotAllowed
 
+IncrementalMeritRank.ASSERT = True
 
 def top_items(d, num_items=3):
     return dict(sorted(d.items(), key=itemgetter(1), reverse=True)[:num_items])
@@ -399,11 +400,11 @@ def test_pagerank_incremental_big():
 
 def test_many_egos_change_edge(simple_graph_negative):
     ipr = IncrementalMeritRank()
-    ipr.add_edge("0", "1")
-    ipr.calculate("0", num_walks=1)
-    ipr.calculate("1", num_walks=1)
+    ipr.add_edge("a", "b")
+    ipr.calculate("a", num_walks=1)
+    ipr.calculate("b", num_walks=1)
 
-    ipr.add_edge("0","1", 2.0)
+    ipr.add_edge("a","b", 2.0)
 
 
 

@@ -12,7 +12,6 @@ import networkx as nx
 
 NodeId: TypeAlias = str
 
-ASSERT = False
 OPTIMIZE_INVALIDATION = True
 
 
@@ -223,6 +222,8 @@ class WalkStorage:
 
 
 class IncrementalMeritRank:
+    ASSERT = False
+
     def __init__(self, graph=None, logger=None) -> None:
         self.__graph = nx.DiGraph(graph)
         self.__walks = WalkStorage()
@@ -275,7 +276,7 @@ class IncrementalMeritRank:
         # If there were no hits, the walks have never hit the target node
         hits = counter.get(target, 0)
 
-        if ASSERT:
+        if self.ASSERT:
             if hits > 0 and not nx.has_path(self.__graph, ego, target):
                 assert False
 
@@ -408,7 +409,7 @@ class IncrementalMeritRank:
         # subtract it from the counter by accident!
         to_remove = set(invalidated_segment).difference(set(walk))
         counter.subtract(to_remove)
-        if ASSERT:
+        if self.ASSERT:
             for c in counter.values():
                 pass
                 assert c >= 0
@@ -497,11 +498,11 @@ class IncrementalMeritRank:
             for (walk, invalidated_segment) in invalidated_walks:
                 self.__clear_invalidated_walk(walk, invalidated_segment)
             pass
-            if ASSERT:
+            if self.ASSERT:
                 for ego, hits in self.__personal_hits.items():
                     for peer, count in hits.items():
-                        if len(self.__walks.get_walks_through_node(
-                                peer)) != count:
+                        _wlks = [k for k,v in self.__walks.get_walks_through_node(peer).items() if v.walk[0] == ego]
+                        if len(_wlks) != count:
                             assert False
                         if count > 0 and w > 0 and not nx.has_path(
                                 self.__graph, ego,
@@ -521,15 +522,13 @@ class IncrementalMeritRank:
             for (walk, invalidated_segment) in invalidated_walks:
                 self.__update_negative_hits(walk, negs_cache[walk[0]])
 
-            if ASSERT:
+            if self.ASSERT:
                 for ego, hits in self.__personal_hits.items():
                     for peer, count in hits.items():
-                        if len(self.__walks.get_walks_through_node(
-                                peer)) != count:
+                        _wlks = [k for k,v in self.__walks.get_walks_through_node(peer).items() if v.walk[0] == ego]
+                        if len(_wlks) != count:
                             assert False
-                        if count > 0 and not nx.has_path(self.__graph, ego,
-                                                         peer):
-                            pass
+                        if count > 0 and not nx.has_path(self.__graph, ego, peer):
                             assert False
 
         def zn(s, d, w):
