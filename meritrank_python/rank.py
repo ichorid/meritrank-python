@@ -14,6 +14,8 @@ NodeId: TypeAlias = str
 
 OPTIMIZE_INVALIDATION = True
 
+DEFAULT_NUMBER_OF_WALKS = 10000
+
 
 def sign(x: float) -> int:
     if x > 0:
@@ -239,13 +241,14 @@ class IncrementalMeritRank:
     def get_graph(self):
         return nx.to_dict_of_dicts(self.__graph)
 
-    def calculate(self, ego: NodeId, num_walks: int = 10000):
+    def calculate(self, ego: NodeId, num_walks: int = None):
         """
         Calculate the MeritRank from the perspective of the given node.
         If there are already walks for the node, drop them and calculate anew.
         :param ego: The source node to calculate the MeritRank for.
         :param num_walks: The number of walks that should be used
         """
+        num_walks = num_walks or DEFAULT_NUMBER_OF_WALKS
         self.logger.info("Calculating MeritRank for ego: %s, num_walks: %i", ego, num_walks)
         if not self.__graph.has_node(ego):
             raise NodeDoesNotExist(ego)
@@ -582,3 +585,6 @@ class IncrementalMeritRank:
             if subtract:
                 penalty = -penalty
             ego_neg_hits[node] = ego_neg_hits.get(node, 0) + penalty
+
+    def walk_count_for_ego(self, ego):
+        return len(self.__walks.get_walks_starting_from_node(ego))
